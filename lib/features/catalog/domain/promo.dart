@@ -4,11 +4,11 @@ import 'package:flutter/painting.dart';
 /// Banner colour themes. Keys are stored in `banners/{id}.theme` and must
 /// match `kBannerThemes` in the admin web.
 const bannerColors = <String, List<Color>>{
-  'green': [Color(0xFF1FA463), Color(0xFF0A6B40)],
-  'orange': [Color(0xFFFF9D3C), Color(0xFFEE5A0B)],
-  'purple': [Color(0xFF7C5CFF), Color(0xFF4B2FCB)],
-  'blue': [Color(0xFF2F9BFF), Color(0xFF155FCB)],
-  'pink': [Color(0xFFFF6FA3), Color(0xFFD42A6B)],
+  'maroon': [Color(0xFFA3203F), Color(0xFF5A0A1C)],
+  'rose': [Color(0xFFE0607B), Color(0xFFA8243F)],
+  'plum': [Color(0xFF8E2A5B), Color(0xFF55103A)],
+  'berry': [Color(0xFFC2185B), Color(0xFF7A0F3A)],
+  'coral': [Color(0xFFF0766A), Color(0xFFC23B4E)],
 };
 
 /// A promo banner on the home page (`banners/{id}`).
@@ -30,13 +30,14 @@ class Promo {
   /// Category opened when the banner is tapped.
   final String categoryId;
 
-  List<Color> get colors => bannerColors[theme] ?? bannerColors['green']!;
+  /// Unknown or legacy theme keys fall back to maroon.
+  List<Color> get colors => bannerColors[theme] ?? bannerColors['maroon']!;
 
   factory Promo.fromMap(Map<String, dynamic> map) => Promo(
         title: map['title'] as String? ?? '',
         subtitle: map['subtitle'] as String? ?? '',
         emoji: map['emoji'] as String? ?? '',
-        theme: map['theme'] as String? ?? 'green',
+        theme: map['theme'] as String? ?? 'maroon',
         categoryId: map['categoryId'] as String? ?? '',
       );
 }

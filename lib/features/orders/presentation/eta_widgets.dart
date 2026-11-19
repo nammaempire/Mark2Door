@@ -49,7 +49,7 @@ class _TickerState extends State<Ticker> {
     case EtaKind.onHold:
       return (color: AppColors.warning, icon: Icons.hourglass_top_rounded);
     case EtaKind.delivered:
-      return (color: AppColors.primary, icon: Icons.check_circle_rounded);
+      return (color: AppColors.success, icon: Icons.check_circle_rounded);
   }
 }
 

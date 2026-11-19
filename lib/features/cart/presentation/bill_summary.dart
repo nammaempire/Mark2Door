@@ -32,7 +32,7 @@ class BillSummary extends StatelessWidget {
             _row(
               'Delivery fee',
               deliveryFeePaise == 0 ? 'FREE' : formatPaise(deliveryFeePaise),
-              valueColor: deliveryFeePaise == 0 ? AppColors.primary : null,
+              valueColor: deliveryFeePaise == 0 ? AppColors.success : null,
             ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -48,7 +48,7 @@ class BillSummary extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                    color: AppColors.success,
                   ),
                 ),
               ),

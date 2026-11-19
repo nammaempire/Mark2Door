@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
@@ -64,102 +65,102 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final searching = _query.isNotEmpty;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      child: Scaffold(
-        body: Column(
-          children: [
-            _Header(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              onClear: _clearSearch,
-            ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  ref.invalidate(categoriesProvider);
-                  return ref.refresh(productsProvider(query).future);
-                },
-                child: CustomScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  slivers: [
-                    if (searching)
-                      SliverToBoxAdapter(
-                        child: _SectionTitle('Results for "$_query"'),
-                      )
-                    else ...const [
-                      SliverToBoxAdapter(child: SizedBox(height: 16)),
-                      SliverToBoxAdapter(child: _PromoSection()),
-                      SliverToBoxAdapter(
-                        child: _SectionTitle('Shop by category'),
-                      ),
-                      SliverToBoxAdapter(child: _CategoryStrip()),
-                      SliverToBoxAdapter(child: _FreeDeliveryStrip()),
-                    ],
-                    ...products.when(
-                      data: (items) => [
-                        if (items.isEmpty)
-                          const SliverFillRemaining(
+        value: SystemUiOverlayStyle.light,
+        child: Scaffold(
+          body: Column(
+            children: [
+              _Header(
+                controller: _searchController,
+                onChanged: _onSearchChanged,
+                onClear: _clearSearch,
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    ref.invalidate(categoriesProvider);
+                    return ref.refresh(productsProvider(query).future);
+                  },
+                  child: CustomScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    slivers: [
+                      if (searching)
+                        SliverToBoxAdapter(
+                          child: _SectionTitle('Results for "$_query"'),
+                        )
+                      else ...const [
+                        SliverToBoxAdapter(child: SizedBox(height: 16)),
+                        SliverToBoxAdapter(child: _PromoSection()),
+                        SliverToBoxAdapter(
+                          child: _SectionTitle('Shop by category'),
+                        ),
+                        SliverToBoxAdapter(child: _CategoryStrip()),
+                        SliverToBoxAdapter(child: _FreeDeliveryStrip()),
+                      ],
+                      ...products.when(
+                        data: (items) => [
+                          if (items.isEmpty)
+                            const SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: EmptyState(
+                                icon: Icons.search_off_rounded,
+                                title: 'No products found',
+                                message: 'Try a different name or category.',
+                              ),
+                            )
+                          else ...[
+                            if (!searching && _deals(items).isNotEmpty) ...[
+                              const SliverToBoxAdapter(
+                                child: _SectionTitle(
+                                  'Deals of the day',
+                                  icon: Icons.local_fire_department_rounded,
+                                ),
+                              ),
+                              SliverToBoxAdapter(
+                                child: ProductRail(
+                                  products: _deals(items),
+                                  keyPrefix: 'deal',
+                                ),
+                              ),
+                            ],
+                            if (!searching)
+                              const SliverToBoxAdapter(
+                                child: _SectionTitle(
+                                  'Popular near you',
+                                  topPadding: 0,
+                                ),
+                              ),
+                            ProductGrid(products: items),
+                          ],
+                        ],
+                        loading: () => const [
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                        ],
+                        error: (_, __) => [
+                          SliverFillRemaining(
                             hasScrollBody: false,
                             child: EmptyState(
-                              icon: Icons.search_off_rounded,
-                              title: 'No products found',
-                              message: 'Try a different name or category.',
+                              icon: Icons.cloud_off_rounded,
+                              title: 'Something went wrong',
+                              message: 'Check your connection and try again.',
+                              actionLabel: 'Retry',
+                              onAction: () =>
+                                  ref.invalidate(productsProvider(query)),
                             ),
-                          )
-                        else ...[
-                          if (!searching && _deals(items).isNotEmpty) ...[
-                            const SliverToBoxAdapter(
-                              child: _SectionTitle(
-                                'Deals of the day',
-                                icon: Icons.local_fire_department_rounded,
-                              ),
-                            ),
-                            SliverToBoxAdapter(
-                              child: ProductRail(
-                                products: _deals(items),
-                                keyPrefix: 'deal',
-                              ),
-                            ),
-                          ],
-                          if (!searching)
-                            const SliverToBoxAdapter(
-                              child: _SectionTitle(
-                                'Popular near you',
-                                topPadding: 0,
-                              ),
-                            ),
-                          ProductGrid(products: items),
-                        ],
-                      ],
-                      loading: () => const [
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: Center(child: CircularProgressIndicator()),
-                        ),
-                      ],
-                      error: (_, __) => [
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: EmptyState(
-                            icon: Icons.cloud_off_rounded,
-                            title: 'Something went wrong',
-                            message: 'Check your connection and try again.',
-                            actionLabel: 'Retry',
-                            onAction: () =>
-                                ref.invalidate(productsProvider(query)),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const CartBar(),
-          ],
+              const CartBar(),
+            ],
+          ),
         ),
-      ),
     );
   }
 }
@@ -179,6 +180,7 @@ class _Header extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pincode = ref.watch(pincodeProvider) ?? '';
     final eta = ref.watch(storeSettingsProvider).deliveryEtaMinutes;
+    final palette = context.palette;
     final topInset = MediaQuery.paddingOf(context).top;
     const searchBorder = OutlineInputBorder(
       borderRadius: BorderRadius.all(Radius.circular(16)),
@@ -187,13 +189,13 @@ class _Header extends ConsumerWidget {
 
     return Container(
       padding: EdgeInsets.fromLTRB(16, topInset + 12, 16, 18),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF14915A), AppColors.primaryDark],
+          colors: [palette.primaryLight, palette.primaryDark],
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Column(
         children: [
@@ -298,9 +300,9 @@ class _Header extends ConsumerWidget {
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 hintText: 'Search milk, atta, fruits',
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search_rounded,
-                  color: AppColors.primary,
+                  color: palette.primary,
                 ),
                 suffixIcon: value.text.isEmpty
                     ? null
@@ -334,7 +336,7 @@ class _PromoSection extends ConsumerWidget {
               ? const SizedBox.shrink()
               : PromoCarousel(promos: promos),
           // Reserve the carousel's height so content below does not jump.
-          loading: () => const SizedBox(height: 174),
+          loading: () => const SizedBox(height: 180),
           error: (_, __) => const SizedBox.shrink(),
         );
   }
@@ -383,13 +385,14 @@ class _CategoryStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(categoriesProvider);
     return SizedBox(
-      height: 112,
+      height: 124,
       child: categories.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => const SizedBox.shrink(),
         data: (items) => ListView.separated(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          // Bottom room so tile shadows are not clipped by the list.
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(width: 12),
           itemBuilder: (context, i) => _CategoryTile(category: items[i]),
@@ -407,6 +410,8 @@ class _CategoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = CategoryStyle.of(category.icon);
+    final palette = context.palette;
+    final artColors = palette.artColors;
     return InkWell(
       onTap: () => context.push(Routes.category(category.id)),
       borderRadius: BorderRadius.circular(20),
@@ -419,8 +424,15 @@ class _CategoryTile extends StatelessWidget {
               height: 72,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                gradient: style.gradient,
+                gradient: artColors != null
+                    ? LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: artColors,
+                      )
+                    : style.gradient,
                 borderRadius: BorderRadius.circular(22),
+                boxShadow: palette.elevation,
               ),
               child: EmojiText(style.emoji, size: 34),
             ),
@@ -451,19 +463,19 @@ class _FreeDeliveryStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final threshold =
         ref.watch(storeSettingsProvider).freeDeliveryThresholdPaise;
+    final strip = context.palette.stripColors ??
+        const [Color(0xFFFFA94D), Color(0xFFF2600C)];
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFA94D), Color(0xFFF2600C)],
-        ),
+        gradient: LinearGradient(colors: strip),
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x33F2600C),
-            blurRadius: 14,
-            offset: Offset(0, 6),
+            color: strip.last.withAlpha(70),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../cart/application/cart_controller.dart';
@@ -37,7 +38,7 @@ class CategoryStyle {
       );
 
   static const _fallback =
-      CategoryStyle('🛒', AppColors.primarySoft, Color(0xFFBFE5D0));
+      CategoryStyle('🛒', AppColors.primarySoft, Color(0xFFF4BECA));
   static const _styles = <String, CategoryStyle>{
     'fruits': CategoryStyle('🥬', Color(0xFFEAF8E8), Color(0xFFB9E6B4)),
     'dairy': CategoryStyle('🥛', Color(0xFFE8F2FF), Color(0xFFB5D4FF)),
@@ -102,8 +103,17 @@ class ProductImage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final style = ref.watch(categoryStyleProvider(product.categoryId));
+    final artColors = context.palette.artColors;
     final placeholder = DecoratedBox(
-      decoration: BoxDecoration(gradient: style.gradient),
+      decoration: BoxDecoration(
+        gradient: artColors != null
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: artColors,
+              )
+            : style.gradient,
+      ),
       child: Center(
         child: EmojiText(
           product.emoji.isEmpty ? style.emoji : product.emoji,
@@ -184,6 +194,7 @@ class QtyStepper extends ConsumerWidget {
       cartProvider.select((cart) => cart.quantityOf(product.id)),
     );
     final cart = ref.read(cartProvider.notifier);
+    final palette = context.palette;
     final radius = BorderRadius.circular(height / 3.2);
 
     if (!product.inStock) {
@@ -213,7 +224,7 @@ class QtyStepper extends ConsumerWidget {
           color: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: radius,
-            side: const BorderSide(color: AppColors.primary, width: 1.4),
+            side: BorderSide(color: palette.primary, width: 1.4),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -221,14 +232,14 @@ class QtyStepper extends ConsumerWidget {
             onTap: () => cart.add(product),
             child: SizedBox(
               height: height,
-              child: const Center(
+              child: Center(
                 child: Text(
                   'ADD',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.4,
-                    color: AppColors.primary,
+                    color: palette.primary,
                   ),
                 ),
               ),
@@ -255,7 +266,7 @@ class QtyStepper extends ConsumerWidget {
     return DecoratedBox(
       decoration: BoxDecoration(borderRadius: radius, boxShadow: _shadow),
       child: Material(
-        color: AppColors.primary,
+        color: palette.primary,
         borderRadius: radius,
         clipBehavior: Clip.antiAlias,
         child: SizedBox(
@@ -303,13 +314,7 @@ class SoftCard extends StatelessWidget {
         color: gradient == null ? AppColors.surface : null,
         gradient: gradient,
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x12142318),
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-        ],
+        boxShadow: context.palette.elevation,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
@@ -329,9 +334,17 @@ class ProductCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cardColors = context.palette.cardColors;
     return SoftCard(
-      gradient:
-          ref.watch(categoryStyleProvider(product.categoryId)).cardGradient,
+      // A themed screen colours every card alike; otherwise each card takes
+      // its category's tint.
+      gradient: cardColors != null
+          ? LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: cardColors,
+            )
+          : ref.watch(categoryStyleProvider(product.categoryId)).cardGradient,
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
@@ -513,10 +526,10 @@ class ProductRail extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       // Extra room so card shadows are not clipped by the list viewport.
-      height: ProductCard.height + 24,
+      height: ProductCard.height + 32,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
         itemCount: products.length,
         separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (context, i) => SizedBox(
@@ -537,6 +550,7 @@ class CartBar extends ConsumerWidget {
     final cart = ref.watch(cartProvider);
     if (cart.isEmpty) return const SizedBox.shrink();
     final count = cart.totalQuantity;
+    final palette = context.palette;
     final radius = BorderRadius.circular(18);
 
     return SafeArea(
@@ -546,14 +560,14 @@ class CartBar extends ConsumerWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: radius,
-            gradient: const LinearGradient(
-              colors: [AppColors.primary, AppColors.primaryDark],
+            gradient: LinearGradient(
+              colors: [palette.primary, palette.primaryDark],
             ),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: Color(0x400E7A4B),
+                color: palette.primary.withAlpha(64),
                 blurRadius: 16,
-                offset: Offset(0, 8),
+                offset: const Offset(0, 8),
               ),
             ],
           ),

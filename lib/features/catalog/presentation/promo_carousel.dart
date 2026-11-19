@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../domain/promo.dart';
 import 'product_widgets.dart';
@@ -48,18 +49,19 @@ class _PromoCarouselState extends State<PromoCarousel> {
     return Column(
       children: [
         SizedBox(
-          height: 158,
+          height: 172,
           child: PageView.builder(
             controller: _controller,
             itemCount: widget.promos.length,
             onPageChanged: (i) => setState(() => _page = i),
             itemBuilder: (context, i) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              child: _PromoCard(promo: widget.promos[i]),
+              // Bottom room so the card's shadow is not clipped by the pager.
+              padding: const EdgeInsets.fromLTRB(5, 0, 5, 14),
+              child: _PromoCard(promo: widget.promos[i], index: i),
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 2),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -70,7 +72,7 @@ class _PromoCarouselState extends State<PromoCarousel> {
                 width: i == _page ? 18 : 6,
                 height: 6,
                 decoration: BoxDecoration(
-                  color: i == _page ? AppColors.primary : AppColors.border,
+                  color: i == _page ? context.palette.primary : AppColors.border,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -82,21 +84,28 @@ class _PromoCarouselState extends State<PromoCarousel> {
 }
 
 class _PromoCard extends StatelessWidget {
-  const _PromoCard({required this.promo});
+  const _PromoCard({required this.promo, required this.index});
 
   final Promo promo;
+
+  /// Position in the carousel; picks the themed gradient in rotation.
+  final int index;
 
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(24);
+    final themed = context.palette.bannerColors;
+    final colors =
+        themed == null ? promo.colors : themed[index % themed.length];
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: promo.colors,
+          colors: colors,
         ),
+        boxShadow: context.palette.elevation,
       ),
       child: Material(
         type: MaterialType.transparency,
@@ -165,7 +174,7 @@ class _PromoCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
-                            color: promo.colors.last,
+                            color: colors.last,
                           ),
                         ),
                       ),

@@ -77,7 +77,7 @@ class RazorpayPaymentGateway implements PaymentGateway {
         'description': request.description,
         'prefill': {'contact': request.phone},
         'notes': {'appOrderId': request.orderId},
-        'theme': {'color': '#0E7A4B'},
+        'theme': {'color': '#800020'},
       });
     } catch (e) {
       finish(const PaymentResult(
@@ -169,7 +169,7 @@ class _SimulatedSheet extends StatelessWidget {
             ),
           ),
           option('Payment succeeds', Icons.check_circle_rounded,
-              AppColors.primary, PaymentOutcome.success),
+              AppColors.success, PaymentOutcome.success),
           option('Payment fails', Icons.cancel_rounded, AppColors.danger,
               PaymentOutcome.failed),
           option('Payment stays pending', Icons.schedule_rounded,

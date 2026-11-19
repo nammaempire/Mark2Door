@@ -152,7 +152,7 @@ class _ResultView {
       case PaymentOutcome.success:
         return const _ResultView(
           Icons.check_circle_rounded,
-          AppColors.primary,
+          AppColors.success,
           'Order placed',
           "We've received your order and will deliver it soon.",
         );
