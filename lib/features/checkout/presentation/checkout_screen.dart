@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -13,9 +12,12 @@ import '../../auth/presentation/auth_header.dart';
 import '../../cart/application/cart_controller.dart';
 import '../../cart/presentation/bill_summary.dart';
 import '../../orders/domain/order.dart';
+import '../../rewards/application/rewards_providers.dart';
 import '../../service_area/application/pincode_controller.dart';
+import '../application/address_book.dart';
 import '../application/checkout_controller.dart';
 import '../domain/address.dart';
+import 'address_sheets.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
@@ -26,48 +28,43 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _name;
-  late final TextEditingController _phone;
-  late final TextEditingController _line1;
-  late final TextEditingController _landmark;
+
+  /// Used only for a shopper's first order, before any address is saved.
+  late final AddressFields _fields;
   PaymentMethod _method = PaymentMethod.online;
+
+  /// On by default whenever there is wallet money to use.
+  bool _useWallet = true;
 
   @override
   void initState() {
     super.initState();
-    final saved = ref.read(savedAddressProvider);
-    final userPhone = ref.read(currentUserProvider)?.phone ?? '';
-    _name = TextEditingController(text: saved?.name ?? '');
-    _phone = TextEditingController(
-      text: saved?.phone ?? userPhone.replaceFirst(AppConfig.countryCode, ''),
+    _fields = AddressFields.from(
+      null,
+      phone: ref.read(currentUserProvider)?.phone ?? '',
+      pincode: ref.read(pincodeProvider) ?? '',
     );
-    _line1 = TextEditingController(text: saved?.line1 ?? '');
-    _landmark = TextEditingController(text: saved?.landmark ?? '');
   }
 
   @override
   void dispose() {
-    _name.dispose();
-    _phone.dispose();
-    _line1.dispose();
-    _landmark.dispose();
+    _fields.dispose();
     super.dispose();
   }
 
   Future<void> _placeOrder() async {
     FocusScope.of(context).unfocus();
-    if (!_formKey.currentState!.validate()) return;
-
-    final address = Address(
-      name: _name.text.trim(),
-      phone: _phone.text.trim(),
-      line1: _line1.text.trim(),
-      landmark: _landmark.text.trim(),
-      pincode: ref.read(pincodeProvider) ?? '',
-    );
+    // A saved address is used as it is; otherwise the form is the address.
+    var address = ref.read(addressBookProvider).selected;
+    if (address == null) {
+      if (!_formKey.currentState!.validate()) return;
+      address = _fields.toAddress(
+        pincodeOverride: ref.read(pincodeProvider) ?? '',
+      );
+    }
     final result = await ref
         .read(checkoutControllerProvider.notifier)
-        .placeOrder(address: address, method: _method);
+        .placeOrder(address: address, method: _method, useWallet: _useWallet);
     if (!mounted || result == null) return;
     context.go(Routes.orderResult(result.orderId, result.outcome));
   }
@@ -76,6 +73,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final pincode = ref.watch(pincodeProvider) ?? '';
+    final saved = ref.watch(addressBookProvider).selected;
+    final walletBalance = ref.watch(walletBalanceProvider);
+    final walletApplied = _useWallet
+        ? walletAmountFor(cart.totalPaise, walletBalance)
+        : 0;
+    final payable = cart.totalPaise - walletApplied;
     final placing = ref.watch(checkoutControllerProvider).isLoading;
 
     ref.listen(checkoutControllerProvider, (_, next) {
@@ -112,51 +115,23 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   children: [
                     const SectionLabel('Delivery address'),
-                    _field(
-                      key: 'name-field',
-                      controller: _name,
-                      label: 'Full name',
-                      validator: Validators.required('your name'),
-                      capitalization: TextCapitalization.words,
-                      autofill: AutofillHints.name,
-                    ),
-                    _field(
-                      key: 'address-phone-field',
-                      controller: _phone,
-                      label: 'Mobile number',
-                      validator: Validators.phone,
-                      keyboard: TextInputType.phone,
-                      formatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(10),
-                      ],
-                    ),
-                    _field(
-                      key: 'line1-field',
-                      controller: _line1,
-                      label: 'House / flat, street, area',
-                      validator: Validators.required('your address'),
-                      capitalization: TextCapitalization.sentences,
-                      autofill: AutofillHints.streetAddressLine1,
-                    ),
-                    _field(
-                      key: 'landmark-field',
-                      controller: _landmark,
-                      label: 'Landmark (optional)',
-                      capitalization: TextCapitalization.sentences,
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.location_on_outlined,
-                            color: AppColors.primary),
-                        title: Text('Pincode $pincode'),
-                        subtitle: const Text('We deliver to this area'),
-                        trailing: TextButton(
-                          onPressed: () => context.push(Routes.pincode),
-                          child: const Text('Change'),
+                    if (saved != null)
+                      _SavedAddressCard(address: saved)
+                    else ...[
+                      AddressFormFields(fields: _fields),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.location_on_outlined,
+                              color: AppColors.primary),
+                          title: Text('Pincode $pincode'),
+                          subtitle: const Text('Your delivery pincode'),
+                          trailing: TextButton(
+                            onPressed: () => context.push(Routes.pincode),
+                            child: const Text('Change'),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                     const SectionLabel('Payment method'),
                     Card(
                       child: Column(
@@ -182,12 +157,36 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         'test sheet where you pick the result.',
                       ),
                     ],
-                    const SectionLabel('Bill details'),
-                    BillSummary(
+                    if (walletBalance > 0) ...[
+                      const SizedBox(height: 12),
+                      Card(
+                        child: SwitchListTile(
+                          key: const ValueKey('use-wallet-switch'),
+                          secondary: const Icon(
+                            Icons.account_balance_wallet_rounded,
+                            color: AppColors.primary,
+                          ),
+                          title: const Text(
+                            'Use m2d wallet',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            '${formatPaise(walletBalance)} available',
+                          ),
+                          value: _useWallet,
+                          onChanged: (v) => setState(() => _useWallet = v),
+                        ),
+                      ),
+                    ],
+                    const SectionLabel('Order summary'),
+                    OrderSummaryCard(
                       subtotalPaise: cart.subtotalPaise,
+                      mrpTotalPaise: cart.mrpTotalPaise,
                       deliveryFeePaise: cart.deliveryFeePaise,
+                      handlingFeePaise: cart.handlingFeePaise,
+                      rainFeePaise: cart.rainFeePaise,
+                      walletAppliedPaise: walletApplied,
                       totalPaise: cart.totalPaise,
-                      savingsPaise: cart.savingsPaise,
                     ),
                   ],
                 ),
@@ -198,9 +197,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 key: const ValueKey('place-order-button'),
                 onPressed: placing ? null : _placeOrder,
                 child: LoadingLabel(
-                  _method == PaymentMethod.cod
-                      ? 'Place order  ·  ${formatPaise(cart.totalPaise)}'
-                      : 'Pay ${formatPaise(cart.totalPaise)}',
+                  _method == PaymentMethod.cod || payable == 0
+                      ? 'Place order  ·  ${formatPaise(payable)}'
+                      : 'Pay ${formatPaise(payable)}',
                   loading: placing,
                 ),
               ),
@@ -230,29 +229,68 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       ),
     );
   }
+}
 
-  Widget _field({
-    required String key,
-    required TextEditingController controller,
-    required String label,
-    String? Function(String?)? validator,
-    TextInputType? keyboard,
-    List<TextInputFormatter>? formatters,
-    TextCapitalization capitalization = TextCapitalization.none,
-    String? autofill,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextFormField(
-        key: ValueKey(key),
-        controller: controller,
-        validator: validator,
-        keyboardType: keyboard,
-        inputFormatters: formatters,
-        textCapitalization: capitalization,
-        textInputAction: TextInputAction.next,
-        autofillHints: autofill == null ? null : [autofill],
-        decoration: InputDecoration(labelText: label),
+/// The saved address the order will go to, with a way to pick another or
+/// add a new one. Shoppers who have ordered before never retype it.
+class _SavedAddressCard extends StatelessWidget {
+  const _SavedAddressCard({required this.address});
+
+  final Address address;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const ValueKey('saved-address-card'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(Icons.home_rounded, color: AppColors.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    address.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    address.singleLine,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '+91 ${address.phone}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              key: const ValueKey('change-address-button'),
+              onPressed: () => showAddressPicker(context),
+              child: const Text('Change'),
+            ),
+          ],
+        ),
       ),
     );
   }

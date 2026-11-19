@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mart2door/features/catalog/domain/promo.dart';
+import 'package:mart2door/features/catalog/presentation/banner_art.dart';
 import 'package:mart2door/core/config/env.dart';
 import 'package:mart2door/core/config/store_settings.dart';
 import 'package:mart2door/core/storage/local_store.dart';
@@ -242,6 +244,28 @@ void main() {
       expect(restored.riderName, 'Suresh Kumar');
       expect(restored.riderPhone, '9900011111');
       expect(Order.fromMap('o2', order().toMap()).riderName, isNull);
+    });
+  });
+
+  group('Promo', () {
+    test('reads the design and colour chosen in the admin', () {
+      final promo = Promo.fromMap(const {
+        'title': 'Dairy deals',
+        'subtitle': 'Milk and curd',
+        'emoji': '🥛',
+        'theme': 'teal',
+        'layout': 'spotlight',
+        'categoryId': 'dairy',
+      });
+      expect(promo.layout, 'spotlight');
+      expect(bannerLayouts, contains(promo.layout));
+      expect(promo.colors, bannerColors['teal']);
+    });
+
+    test('older banners fall back to the classic design and maroon', () {
+      final promo = Promo.fromMap(const {'title': 'Old', 'theme': 'gone'});
+      expect(promo.layout, 'classic');
+      expect(promo.colors, bannerColors['maroon']);
     });
   });
 }

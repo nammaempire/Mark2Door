@@ -14,11 +14,16 @@ import '../../features/catalog/presentation/product_list_screen.dart';
 import '../../features/checkout/data/payment_gateway.dart';
 import '../../features/checkout/presentation/checkout_screen.dart';
 import '../../features/checkout/presentation/order_result_screen.dart';
+import '../../features/checkout/presentation/result_animation.dart';
 import '../../features/orders/presentation/order_detail_screen.dart';
 import '../../features/orders/presentation/orders_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/rewards/presentation/invite_screen.dart';
+import '../../features/rewards/presentation/wallet_screen.dart';
 import '../../features/service_area/application/pincode_controller.dart';
 import '../../features/service_area/presentation/pincode_screen.dart';
+import '../../features/support/presentation/help_screen.dart';
+import '../../features/support/presentation/legal_screen.dart';
 import '../providers.dart';
 
 /// Route locations in one place so screens never hand-build path strings.
@@ -36,6 +41,11 @@ abstract final class Routes {
   static String product(String id) => '/home/product/$id';
   static String category(String id) => '/home/category/$id';
   static String order(String id) => '/orders/$id';
+  static String refund(String id) => '/orders/$id/refund';
+  static const invite = '/profile/invite';
+  static const wallet = '/profile/wallet';
+  static const help = '/profile/help';
+  static String legal(String pageId) => '/profile/legal/$pageId';
   static String orderResult(String id, PaymentOutcome outcome) =>
       '/home/order-result/$id?outcome=${outcome.name}';
 }
@@ -122,9 +132,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) => OrderResultScreen(
                       orderId: state.pathParameters['id']!,
-                      outcome: PaymentOutcome.values.firstWhere(
-                        (o) => o.name == state.uri.queryParameters['outcome'],
-                        orElse: () => PaymentOutcome.pending,
+                      // PaymentOutcome and ResultKind share these names.
+                      outcome: ResultKind.values.firstWhere(
+                        (o) =>
+                            o != ResultKind.refunded &&
+                            o.name == state.uri.queryParameters['outcome'],
+                        orElse: () => ResultKind.pending,
                       ),
                     ),
                   ),
@@ -144,6 +157,16 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) => OrderDetailScreen(
                       orderId: state.pathParameters['id']!,
                     ),
+                    routes: [
+                      GoRoute(
+                        path: 'refund',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (context, state) => OrderResultScreen(
+                          orderId: state.pathParameters['id']!,
+                          outcome: ResultKind.refunded,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -154,6 +177,30 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: Routes.profile,
                 builder: (context, state) => const ProfileScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'invite',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const InviteScreen(),
+                  ),
+                  GoRoute(
+                    path: 'wallet',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const WalletScreen(),
+                  ),
+                  GoRoute(
+                    path: 'help',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const HelpScreen(),
+                  ),
+                  GoRoute(
+                    path: 'legal/:page',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => LegalScreen(
+                      pageId: state.pathParameters['page']!,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

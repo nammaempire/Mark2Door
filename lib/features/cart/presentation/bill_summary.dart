@@ -3,53 +3,121 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 
-/// Price breakdown card shared by cart, checkout and order detail.
-class BillSummary extends StatelessWidget {
-  const BillSummary({
+/// "Order summary" card shared by cart, checkout and order detail.
+///
+/// Handling fee and rain charge are admin-controlled extras: each row is
+/// shown only when its amount is above zero.
+class OrderSummaryCard extends StatelessWidget {
+  const OrderSummaryCard({
     super.key,
     required this.subtotalPaise,
     required this.deliveryFeePaise,
     required this.totalPaise,
-    this.savingsPaise = 0,
+    this.mrpTotalPaise = 0,
+    this.handlingFeePaise = 0,
+    this.rainFeePaise = 0,
+    this.walletAppliedPaise = 0,
     this.totalLabel = 'To pay',
+    this.savingsVerb = 'You save',
   });
 
+  /// What the items cost at selling price.
   final int subtotalPaise;
+
+  /// What the items would cost at MRP; shown struck through when higher.
+  final int mrpTotalPaise;
   final int deliveryFeePaise;
+  final int handlingFeePaise;
+  final int rainFeePaise;
+
+  /// Paid from the m2d wallet; shown as a deduction when above zero.
+  final int walletAppliedPaise;
+
+  /// Order value before the wallet is taken off.
   final int totalPaise;
-  final int savingsPaise;
   final String totalLabel;
+
+  /// "You save" before ordering, "You saved" on a placed order.
+  final String savingsVerb;
 
   @override
   Widget build(BuildContext context) {
+    final savingsPaise = mrpTotalPaise - subtotalPaise;
     return Card(
+      key: const ValueKey('order-summary'),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _row('Item total', formatPaise(subtotalPaise)),
+            _row(
+              'Item total',
+              formatPaise(subtotalPaise),
+              struck: savingsPaise > 0 ? formatPaise(mrpTotalPaise) : null,
+            ),
             const SizedBox(height: 10),
             _row(
               'Delivery fee',
               deliveryFeePaise == 0 ? 'FREE' : formatPaise(deliveryFeePaise),
               valueColor: deliveryFeePaise == 0 ? AppColors.success : null,
             ),
+            if (handlingFeePaise > 0) ...[
+              const SizedBox(height: 10),
+              _row('Handling fee', formatPaise(handlingFeePaise)),
+            ],
+            if (rainFeePaise > 0) ...[
+              const SizedBox(height: 10),
+              _row('Rain charge', formatPaise(rainFeePaise)),
+            ],
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(),
             ),
-            _row(totalLabel, formatPaise(totalPaise), bold: true),
-            if (savingsPaise > 0) ...[
+            if (walletAppliedPaise > 0) ...[
+              _row('Order total', formatPaise(totalPaise)),
               const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'You save ${formatPaise(savingsPaise)} on this order',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.success,
-                  ),
+              _row(
+                'm2d wallet',
+                '- ${formatPaise(walletAppliedPaise)}',
+                valueColor: AppColors.success,
+              ),
+              const SizedBox(height: 10),
+            ],
+            _row(
+              totalLabel,
+              formatPaise(totalPaise - walletAppliedPaise),
+              bold: true,
+            ),
+            if (savingsPaise > 0) ...[
+              const SizedBox(height: 12),
+              Container(
+                key: const ValueKey('savings-banner'),
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.successSoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.savings_outlined,
+                      size: 18,
+                      color: AppColors.success,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$savingsVerb ${formatPaise(savingsPaise)} on this '
+                        'order',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.success,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -59,17 +127,32 @@ class BillSummary extends StatelessWidget {
     );
   }
 
-  Widget _row(String label, String value,
-      {bool bold = false, Color? valueColor}) {
+  Widget _row(
+    String label,
+    String value, {
+    bool bold = false,
+    Color? valueColor,
+    String? struck,
+  }) {
     final style = TextStyle(
       fontSize: bold ? 16 : 14,
       fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
       color: AppColors.textDark,
     );
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: style),
+        Expanded(child: Text(label, style: style)),
+        if (struck != null) ...[
+          Text(
+            struck,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textMuted,
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
         Text(value, style: style.copyWith(color: valueColor)),
       ],
     );

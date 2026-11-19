@@ -11,6 +11,11 @@ class StoreSettings {
     required this.deliveryFeePaise,
     required this.freeDeliveryThresholdPaise,
     required this.deliveryEtaMinutes,
+    this.handlingFeeEnabled = false,
+    this.handlingFeePaise = 0,
+    this.rainFeeEnabled = false,
+    this.rainFeePaise = 0,
+    this.supportEmail = '',
   });
 
   static const defaults = StoreSettings(
@@ -25,6 +30,16 @@ class StoreSettings {
   final int freeDeliveryThresholdPaise;
   final int deliveryEtaMinutes;
 
+  /// Extra charges the admin can switch on and off. A charge is added to
+  /// the order, and shown to the shopper, only while it is enabled.
+  final bool handlingFeeEnabled;
+  final int handlingFeePaise;
+  final bool rainFeeEnabled;
+  final int rainFeePaise;
+
+  /// Where "Email us" on the help page writes to; empty hides the button.
+  final String supportEmail;
+
   factory StoreSettings.fromMap(Map<String, dynamic> map) => StoreSettings(
         deliveryFeePaise: (map['deliveryFeePaise'] as num?)?.toInt() ??
             defaults.deliveryFeePaise,
@@ -33,6 +48,11 @@ class StoreSettings {
                 defaults.freeDeliveryThresholdPaise,
         deliveryEtaMinutes: (map['deliveryEtaMinutes'] as num?)?.toInt() ??
             defaults.deliveryEtaMinutes,
+        handlingFeeEnabled: map['handlingFeeEnabled'] as bool? ?? false,
+        handlingFeePaise: (map['handlingFeePaise'] as num?)?.toInt() ?? 0,
+        rainFeeEnabled: map['rainFeeEnabled'] as bool? ?? false,
+        rainFeePaise: (map['rainFeePaise'] as num?)?.toInt() ?? 0,
+        supportEmail: (map['supportEmail'] as String? ?? '').trim(),
       );
 
   @override
@@ -40,12 +60,22 @@ class StoreSettings {
       other is StoreSettings &&
       other.deliveryFeePaise == deliveryFeePaise &&
       other.freeDeliveryThresholdPaise == freeDeliveryThresholdPaise &&
-      other.deliveryEtaMinutes == deliveryEtaMinutes;
+      other.deliveryEtaMinutes == deliveryEtaMinutes &&
+      other.handlingFeeEnabled == handlingFeeEnabled &&
+      other.handlingFeePaise == handlingFeePaise &&
+      other.rainFeeEnabled == rainFeeEnabled &&
+      other.rainFeePaise == rainFeePaise &&
+      other.supportEmail == supportEmail;
 
   @override
   int get hashCode => Object.hash(
         deliveryFeePaise,
         freeDeliveryThresholdPaise,
         deliveryEtaMinutes,
+        handlingFeeEnabled,
+        handlingFeePaise,
+        rainFeeEnabled,
+        rainFeePaise,
+        supportEmail,
       );
 }

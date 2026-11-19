@@ -13,8 +13,11 @@ import '../features/checkout/data/payment_gateway.dart';
 import '../features/orders/data/fake_order_repository.dart';
 import '../features/orders/data/firestore_order_repository.dart';
 import '../features/orders/data/order_repository.dart';
+import '../features/rewards/data/firestore_rewards_repository.dart';
+import '../features/rewards/data/rewards_repository.dart';
 import '../features/service_area/data/service_area_repository.dart';
 import '../features/store/data/store_repository.dart';
+import '../features/support/data/content_repository.dart';
 import 'config/env.dart';
 import 'storage/local_store.dart';
 
@@ -42,10 +45,27 @@ final serviceAreaRepositoryProvider = Provider<ServiceAreaRepository>((ref) {
       : FakeServiceAreaRepository();
 });
 
-final orderRepositoryProvider = Provider<OrderRepository>((ref) {
+final rewardsRepositoryProvider = Provider<RewardsRepository>((ref) {
   return Env.useFirebase
-      ? FirestoreOrderRepository(FirebaseFirestore.instance)
-      : FakeOrderRepository();
+      ? FirestoreRewardsRepository(FirebaseFirestore.instance)
+      : FakeRewardsRepository();
+});
+
+final orderRepositoryProvider = Provider<OrderRepository>((ref) {
+  if (Env.useFirebase) {
+    return FirestoreOrderRepository(FirebaseFirestore.instance);
+  }
+  // Sample data: paying from the wallet updates the sample wallet too.
+  final rewards = ref.watch(rewardsRepositoryProvider);
+  return FakeOrderRepository(
+    rewards: rewards is FakeRewardsRepository ? rewards : null,
+  );
+});
+
+final contentRepositoryProvider = Provider<ContentRepository>((ref) {
+  return Env.useFirebase
+      ? FirestoreContentRepository(FirebaseFirestore.instance)
+      : FakeContentRepository();
 });
 
 final storeRepositoryProvider = Provider<StoreRepository>((ref) {

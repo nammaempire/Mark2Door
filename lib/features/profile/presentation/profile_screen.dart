@@ -6,10 +6,14 @@ import '../../../core/config/env.dart';
 import '../../../core/providers.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/formatters.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../auth/presentation/auth_header.dart';
-import '../../checkout/application/checkout_controller.dart';
+import '../../checkout/application/address_book.dart';
+import '../../rewards/application/rewards_providers.dart';
+import '../../rewards/domain/rewards.dart';
 import '../../service_area/application/pincode_controller.dart';
+import '../../support/data/content_repository.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -43,6 +47,7 @@ class ProfileScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final pincode = ref.watch(pincodeProvider);
     final address = ref.watch(savedAddressProvider);
+    final walletBalance = ref.watch(walletBalanceProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Account')),
@@ -72,6 +77,39 @@ class ProfileScreen extends ConsumerWidget {
             child: Column(
               children: [
                 ListTile(
+                  key: const ValueKey('invite-tile'),
+                  leading: const Icon(
+                    Icons.card_giftcard_rounded,
+                    color: AppColors.primary,
+                  ),
+                  title: const Text(
+                    'Invite and earn',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    'Up to ${formatPaise(ReferralRules.maxRewardPaise)} for '
+                    'inviting friends',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push(Routes.invite),
+                ),
+                const Divider(indent: 16, endIndent: 16),
+                ListTile(
+                  key: const ValueKey('wallet-tile'),
+                  leading: const Icon(Icons.account_balance_wallet_outlined),
+                  title: const Text('m2d wallet'),
+                  subtitle: Text(formatPaise(walletBalance)),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push(Routes.wallet),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
                   leading: const Icon(Icons.location_on_outlined),
                   title: const Text('Delivery pincode'),
                   subtitle: Text(pincode ?? 'Not set'),
@@ -92,6 +130,38 @@ class ProfileScreen extends ConsumerWidget {
                   title: const Text('Your orders'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => context.go(Routes.orders),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  key: const ValueKey('help-tile'),
+                  leading: const Icon(Icons.help_outline_rounded),
+                  title: const Text('Help and support'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push(Routes.help),
+                ),
+                const Divider(indent: 16, endIndent: 16),
+                ListTile(
+                  key: const ValueKey('terms-tile'),
+                  leading: const Icon(Icons.description_outlined),
+                  title: const Text('Terms and conditions'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () =>
+                      context.push(Routes.legal(LegalPage.termsId)),
+                ),
+                const Divider(indent: 16, endIndent: 16),
+                ListTile(
+                  key: const ValueKey('privacy-tile'),
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Privacy policy'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () =>
+                      context.push(Routes.legal(LegalPage.privacyId)),
                 ),
               ],
             ),

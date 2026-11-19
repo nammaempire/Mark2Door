@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/shimmer.dart';
 import '../application/catalog_providers.dart';
+import '../../service_area/presentation/delivery_banner.dart';
 import 'product_widgets.dart';
 
 class ProductListScreen extends ConsumerWidget {
@@ -28,6 +30,13 @@ class ProductListScreen extends ConsumerWidget {
           Expanded(
             child: AsyncValueView(
               value: products,
+              loading: const CustomScrollView(
+                physics: NeverScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  ProductGridSkeleton(),
+                ],
+              ),
               onRetry: () => ref.invalidate(productsProvider(query)),
               data: (items) => items.isEmpty
                   ? const EmptyState(
@@ -37,6 +46,11 @@ class ProductListScreen extends ConsumerWidget {
                     )
                   : CustomScrollView(
                       slivers: [
+                        const SliverToBoxAdapter(
+                          child: NotServiceableBanner(
+                            margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          ),
+                        ),
                         const SliverToBoxAdapter(child: SizedBox(height: 12)),
                         ProductGrid(products: items),
                       ],

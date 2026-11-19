@@ -119,6 +119,7 @@ class OrderStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (String label, Color color) = switch (order) {
+      Order(isRefunded: true) => ('Refunded', const Color(0xFF2F6FD6)),
       Order(status: OrderStatus.cancelled) => ('Cancelled', AppColors.danger),
       Order(status: OrderStatus.delivered) => ('Delivered', AppColors.success),
       Order(awaitingPayment: true) => ('Payment pending', AppColors.warning),

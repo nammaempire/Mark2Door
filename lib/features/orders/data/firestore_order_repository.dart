@@ -17,8 +17,30 @@ class FirestoreOrderRepository implements OrderRepository {
   @override
   Future<Order> create(Order draft) async {
     final doc = _col.doc();
-    await doc.set(draft.toMap());
-    return draft.copyWith(id: doc.id);
+    final order = draft.copyWith(id: doc.id);
+    if (order.walletAppliedPaise <= 0) {
+      await doc.set(order.toMap());
+      return order;
+    }
+    // The order and the wallet change together or not at all. The security
+    // rules accept the order only if the same batch takes exactly
+    // `walletAppliedPaise` out of the shopper's wallet.
+    final wallet = _db.collection('wallets').doc(order.userId);
+    final batch = _db.batch()
+      ..set(doc, order.toMap())
+      ..update(wallet, {
+        'balancePaise': FieldValue.increment(-order.walletAppliedPaise),
+        'updatedAt': order.createdAt.millisecondsSinceEpoch,
+      })
+      ..set(wallet.collection('transactions').doc(doc.id), {
+        'amountPaise': -order.walletAppliedPaise,
+        'type': 'order_payment',
+        'note': 'Paid for order ${order.displayId}',
+        'orderId': doc.id,
+        'createdAt': order.createdAt.millisecondsSinceEpoch,
+      });
+    await batch.commit();
+    return order;
   }
 
   @override

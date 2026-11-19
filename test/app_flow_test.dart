@@ -37,18 +37,24 @@ const _signedIn = <String, Object>{
   LocalStore.pincodeKey: '560034',
 };
 
+/// The home page's vertical scroller (rails inside it scroll sideways).
+final _homeScroll = find
+    .descendant(
+      of: find.byType(CustomScrollView),
+      matching: find.byType(Scrollable),
+    )
+    .first;
+
+/// Result pages keep animating, so they are advanced by time instead of
+/// waiting for animations to stop.
+Future<void> _showResultPage(WidgetTester tester) async {
+  await tester.pump(const Duration(seconds: 1));
+  await tester.pump(const Duration(seconds: 2));
+}
+
 Future<void> _addToCartAndOpenCheckout(WidgetTester tester) async {
   final addBanana = find.byKey(const ValueKey('add-p01'));
-  await tester.scrollUntilVisible(
-    addBanana,
-    300,
-    scrollable: find
-        .descendant(
-          of: find.byType(CustomScrollView),
-          matching: find.byType(Scrollable),
-        )
-        .first,
-  );
+  await tester.scrollUntilVisible(addBanana, 300, scrollable: _homeScroll);
   await tester.ensureVisible(addBanana);
   await tester.pumpAndSettle();
   await tester.tap(addBanana);
@@ -90,29 +96,73 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PincodeScreen), findsOneWidget);
 
+    await tester.enterText(find.byKey(const ValueKey('pincode-field')), '12');
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a valid 6-digit pincode'), findsOneWidget);
+
+    // A pincode outside the delivery area is accepted: the shopper lands
+    // on home, is told we don't deliver there, and cannot add to the cart.
     await tester.enterText(
       find.byKey(const ValueKey('pincode-field')),
       '110001',
     );
-    await tester.tap(find.text('Check availability'));
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    expect(find.textContaining("don't deliver to 110001"), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text('Pincode 110001'), findsOneWidget);
+    expect(
+      find.text("Sorry, we don't deliver to 110001 yet"),
+      findsOneWidget,
+    );
+    final blockedAdd = find.byKey(const ValueKey('deal-p02'));
+    await tester.scrollUntilVisible(blockedAdd, 200, scrollable: _homeScroll);
+    await tester.ensureVisible(blockedAdd);
+    await tester.pumpAndSettle();
+    await tester.tap(blockedAdd);
+    await tester.pump();
+    expect(
+      find.text("Sorry, we don't deliver to your pincode yet."),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('cart-bar')), findsNothing);
 
+    // Changing to a pincode we deliver to opens the store up.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('change-pincode-button')),
+      -200,
+      scrollable: _homeScroll,
+    );
+    await tester.tap(find.byKey(const ValueKey('change-pincode-button')));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('pincode-field')),
       '560034',
     );
-    await tester.tap(find.text('Check availability'));
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.text('Pincode 560034'), findsOneWidget);
+    expect(find.byKey(const ValueKey('not-serviceable-banner')), findsNothing);
   });
 
   testWidgets('returning user skips login and lands on home', (tester) async {
     await _pumpApp(tester, prefs: _signedIn);
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.text('Shop by category'), findsOneWidget);
-    expect(find.text('Deals of the day'), findsOneWidget);
+    // Sections further down are built as the page scrolls.
+    for (final title in [
+      'Deals of the day',
+      'Budget buys under ₹99',
+      'All products',
+    ]) {
+      await tester.scrollUntilVisible(
+        find.text(title),
+        300,
+        scrollable: _homeScroll,
+      );
+      expect(find.text(title), findsOneWidget);
+    }
   });
 
   testWidgets('cash on delivery order reaches success and order detail',
@@ -125,9 +175,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('method-cod')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('place-order-button')));
-    await tester.pumpAndSettle();
+    await _showResultPage(tester);
 
     expect(find.byType(OrderResultScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('result-success')), findsOneWidget);
     expect(find.text('Order placed'), findsOneWidget);
     expect(find.text('Arriving by'), findsOneWidget);
     expect(find.text('₹72'), findsOneWidget); // 42 + 30 delivery
@@ -155,8 +206,9 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pump(const Duration(seconds: 1));
     await tester.tap(find.byKey(const ValueKey('simulate-failed')));
-    await tester.pumpAndSettle();
+    await _showResultPage(tester);
 
+    expect(find.byKey(const ValueKey('result-failed')), findsOneWidget);
     expect(find.text('Payment failed'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('retry-button')));
     await tester.pumpAndSettle();
@@ -173,24 +225,20 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pump(const Duration(seconds: 1));
     await tester.tap(find.byKey(const ValueKey('simulate-pending')));
-    await tester.pumpAndSettle();
+    await _showResultPage(tester);
 
+    expect(find.byKey(const ValueKey('result-pending')), findsOneWidget);
     expect(find.text('Payment pending'), findsOneWidget);
   });
 
   testWidgets('product detail: stepper updates the cart badge', (tester) async {
     await _pumpApp(tester, prefs: _signedIn);
-    final dealCard = find.text('Tomato Local').first;
     await tester.scrollUntilVisible(
-      dealCard,
+      find.byKey(const ValueKey('deal-p02')),
       200,
-      scrollable: find
-          .descendant(
-            of: find.byType(CustomScrollView),
-            matching: find.byType(Scrollable),
-          )
-          .first,
+      scrollable: _homeScroll,
     );
+    final dealCard = find.text('Tomato Local').first;
     await tester.ensureVisible(dealCard);
     await tester.pumpAndSettle();
     await tester.tap(dealCard);
@@ -213,6 +261,11 @@ void main() {
     await _pumpApp(tester, prefs: _signedIn);
     await tester.tap(find.text('Account'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('logout-tile')),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.byKey(const ValueKey('logout-tile')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Log out').last);

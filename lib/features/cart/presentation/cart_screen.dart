@@ -6,7 +6,11 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/shimmer.dart';
+import '../../catalog/application/catalog_providers.dart';
 import '../../catalog/presentation/product_widgets.dart';
+import '../../service_area/application/pincode_controller.dart';
+import '../../service_area/presentation/delivery_banner.dart';
 import '../application/cart_controller.dart';
 import '../domain/cart.dart';
 import 'bill_summary.dart';
@@ -17,6 +21,7 @@ class CartScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cart = ref.watch(cartProvider);
+    final canOrder = ref.watch(canOrderProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Your cart')),
@@ -32,34 +37,53 @@ class CartScreen extends ConsumerWidget {
               children: [
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                    padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
                     children: [
-                      if (cart.toFreeDeliveryPaise > 0)
-                        _FreeDeliveryHint(cart: cart),
-                      Card(
+                      const NotServiceableBanner(
+                        margin: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            for (final (i, line) in cart.lines.indexed) ...[
-                              if (i > 0) const Divider(indent: 16, endIndent: 16),
-                              _CartLine(item: line),
-                            ],
+                            if (cart.toFreeDeliveryPaise > 0)
+                              _FreeDeliveryHint(cart: cart),
+                            Card(
+                              child: Column(
+                                children: [
+                                  for (final (i, line)
+                                      in cart.lines.indexed) ...[
+                                    if (i > 0)
+                                      const Divider(indent: 16, endIndent: 16),
+                                    _CartLine(item: line),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SectionLabel('Order summary'),
+                            OrderSummaryCard(
+                              subtotalPaise: cart.subtotalPaise,
+                              mrpTotalPaise: cart.mrpTotalPaise,
+                              deliveryFeePaise: cart.deliveryFeePaise,
+                              handlingFeePaise: cart.handlingFeePaise,
+                              rainFeePaise: cart.rainFeePaise,
+                              totalPaise: cart.totalPaise,
+                            ),
                           ],
                         ),
                       ),
-                      const SectionLabel('Bill details'),
-                      BillSummary(
-                        subtotalPaise: cart.subtotalPaise,
-                        deliveryFeePaise: cart.deliveryFeePaise,
-                        totalPaise: cart.totalPaise,
-                        savingsPaise: cart.savingsPaise,
-                      ),
+                      _SimilarProducts(cart: cart),
                     ],
                   ),
                 ),
                 BottomActionBar(
                   child: FilledButton(
                     key: const ValueKey('checkout-button'),
-                    onPressed: () => context.push(Routes.checkout),
+                    // Outside the delivery area the banner above explains
+                    // why ordering is off.
+                    onPressed:
+                        canOrder ? () => context.push(Routes.checkout) : null,
                     child: Text(
                       'Proceed to checkout  ·  ${formatPaise(cart.totalPaise)}',
                     ),
@@ -68,6 +92,42 @@ class CartScreen extends ConsumerWidget {
               ],
             ),
     );
+  }
+}
+
+/// "You might also like": a sideways row of products that go with what
+/// is in the cart, so the page offers something to add.
+class _SimilarProducts extends ConsumerWidget {
+  const _SimilarProducts({required this.cart});
+
+  final Cart cart;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    const title = Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16),
+      child: SectionLabel('You might also like'),
+    );
+    return ref.watch(productsProvider(allProductsQuery)).when(
+          loading: () => const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [title, ProductRailSkeleton()],
+          ),
+          // Suggestions are a bonus; the cart works without them.
+          error: (_, __) => const SizedBox.shrink(),
+          data: (all) {
+            final similar =
+                similarProducts(all, cart.lines.map((l) => l.product));
+            if (similar.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                title,
+                ProductRail(products: similar, keyPrefix: 'similar'),
+              ],
+            );
+          },
+        );
   }
 }
 

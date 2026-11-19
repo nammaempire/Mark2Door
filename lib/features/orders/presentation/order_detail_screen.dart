@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/shimmer.dart';
 import '../../cart/presentation/bill_summary.dart';
 import '../application/order_providers.dart';
 import '../domain/order.dart';
@@ -23,6 +26,7 @@ class OrderDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Order details')),
       body: AsyncValueView(
         value: order,
+        loading: const CardListSkeleton(count: 3),
         onRetry: () => ref.invalidate(orderProvider(orderId)),
         data: (o) => o == null
             ? const EmptyState(
@@ -47,7 +51,9 @@ class _Body extends StatelessWidget {
       (_, PaymentStatus.paid) => 'Paid online',
       (_, PaymentStatus.pending) => 'Online payment pending',
       (_, PaymentStatus.failed) => 'Online payment failed',
+      (_, PaymentStatus.refunded) => 'Refunded',
     };
+
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -78,6 +84,8 @@ class _Body extends StatelessWidget {
           ],
         ),
         EtaBanner(order: order),
+        if (order.isRefunded || order.refundInProgress)
+          _RefundBanner(order: order),
         if (order.status != OrderStatus.cancelled) ...[
           const SectionLabel('Order status'),
           Card(
@@ -111,12 +119,17 @@ class _Body extends StatelessWidget {
             ],
           ),
         ),
-        const SectionLabel('Bill details'),
-        BillSummary(
+        const SectionLabel('Order summary'),
+        OrderSummaryCard(
           subtotalPaise: order.subtotalPaise,
+          mrpTotalPaise: order.mrpTotalPaise,
           deliveryFeePaise: order.deliveryFeePaise,
+          handlingFeePaise: order.handlingFeePaise,
+          rainFeePaise: order.rainFeePaise,
+          walletAppliedPaise: order.walletAppliedPaise,
           totalPaise: order.totalPaise,
           totalLabel: 'Total',
+          savingsVerb: 'You saved',
         ),
         const SectionLabel('Delivery and payment'),
         Card(
@@ -167,6 +180,88 @@ class _Body extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Tells the shopper where the money for a cancelled, paid order is.
+class _RefundBanner extends StatelessWidget {
+  const _RefundBanner({required this.order});
+
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final done = order.isRefunded;
+    const color = Color(0xFF2F6FD6);
+    return Container(
+      key: const ValueKey('refund-banner'),
+      margin: const EdgeInsets.only(top: 16),
+      decoration: BoxDecoration(
+        color: color.withAlpha(22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withAlpha(60)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: done ? () => context.push(Routes.refund(order.id)) : null,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    done
+                        ? Icons.currency_rupee_rounded
+                        : Icons.hourglass_top_rounded,
+                    color: color,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        done
+                            ? 'Refund of ${formatPaise(order.totalPaise)} sent'
+                            : 'Refund in progress',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        done
+                            ? 'Tap to see the refund details.'
+                            : '${formatPaise(order.totalPaise)} will be '
+                                'returned to the account you paid from.',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          height: 1.35,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (done) const Icon(Icons.chevron_right_rounded, color: color),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

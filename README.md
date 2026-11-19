@@ -11,7 +11,8 @@ flutter pub get
 flutter run
 ```
 
-With no extra flags the app runs in **sample-data mode**: no backend needed.
+The app uses Firebase by default. To try it without a backend, run
+`flutter run --dart-define=USE_FIREBASE=false` for **sample-data mode**:
 
 | What          | Sample-data value                                   |
 | ------------- | --------------------------------------------------- |
@@ -75,11 +76,11 @@ to Firebase changes nothing outside `core/providers.dart`.
 | Collection                | Fields                                                                 |
 | ------------------------- | ---------------------------------------------------------------------- |
 | `categories/{id}`         | `name`, `icon` (fruits, dairy, staples, snacks, beverages, household)   |
-| `products/{id}`           | `name`, `categoryId`, `unit`, `pricePaise`, `mrpPaise`, `imageUrl`, `description`, `inStock` |
+| `products/{id}`           | `name`, `categoryId`, `unit`, `pricePaise`, `mrpPaise`, `imageUrls` (up to 5; `imageUrl` is the first), `description`, `inStock` |
 | `service_areas/{pincode}` | `active: true`                                                          |
-| `banners/{id}`            | `title`, `subtitle`, `emoji`, `theme`, `categoryId`, `active`, `sortOrder` |
-| `settings/store`          | `deliveryFeePaise`, `freeDeliveryThresholdPaise`, `deliveryEtaMinutes` |
-| `orders/{id}`             | `userId`, `items[]`, totals in paise, `address`, `paymentMethod`, `paymentStatus`, `status`, `createdAt`, `etaAt` |
+| `banners/{id}`            | `title`, `subtitle`, `emoji`, `theme`, `layout`, `categoryId`, `active`, `sortOrder` |
+| `settings/store`          | `deliveryFeePaise`, `freeDeliveryThresholdPaise`, `deliveryEtaMinutes`, `handlingFeeEnabled`, `handlingFeePaise`, `rainFeeEnabled`, `rainFeePaise` |
+| `orders/{id}`             | `userId`, `items[]`, totals in paise (incl. `handlingFeePaise`, `rainFeePaise`), `address`, `paymentMethod`, `paymentStatus` (`pending`, `paid`, `failed`, `refunded`), `status`, `createdAt`, `etaAt` |
 
 All money is stored as integer **paise**. The orders list needs a composite
 index on `orders (userId ASC, createdAt DESC)`; Firestore prints a link to

@@ -6,9 +6,10 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../orders/application/order_providers.dart';
-import '../data/payment_gateway.dart';
+import 'result_animation.dart';
 
-/// One screen, three states: success, payment failed, payment pending.
+/// One screen, four states: order placed, payment failed, payment pending
+/// and refunded. Each has its own animation, message and next step.
 class OrderResultScreen extends ConsumerWidget {
   const OrderResultScreen({
     super.key,
@@ -17,7 +18,7 @@ class OrderResultScreen extends ConsumerWidget {
   });
 
   final String orderId;
-  final PaymentOutcome outcome;
+  final ResultKind outcome;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -26,7 +27,8 @@ class OrderResultScreen extends ConsumerWidget {
 
     return PopScope(
       // Back must never return to the checkout that was just completed.
-      canPop: false,
+      // The refund page is opened from an order, so back returns to it.
+      canPop: outcome == ResultKind.refunded,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) context.go(Routes.home);
       },
@@ -38,16 +40,11 @@ class OrderResultScreen extends ConsumerWidget {
             child: Column(
               children: [
                 const Spacer(),
-                Container(
-                  width: 112,
-                  height: 112,
-                  decoration: BoxDecoration(
-                    color: view.color.withAlpha(30),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(view.icon, size: 64, color: view.color),
+                ResultAnimation(
+                  key: ValueKey('result-${outcome.name}'),
+                  kind: outcome,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 12),
                 Text(
                   view.title,
                   textAlign: TextAlign.center,
@@ -79,10 +76,21 @@ class OrderResultScreen extends ConsumerWidget {
                       children: [
                         _row('Order', order.displayId),
                         const SizedBox(height: 8),
-                        _row('Amount', formatPaise(order.totalPaise)),
+                        _row(
+                          outcome == ResultKind.refunded
+                              ? 'Refund amount'
+                              : 'Amount',
+                          // A refund returns the whole order value; otherwise
+                          // show what was left to pay after the wallet.
+                          formatPaise(
+                            outcome == ResultKind.refunded
+                                ? order.totalPaise
+                                : order.payablePaise,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         _row('Payment', order.paymentMethod.label),
-                        if (outcome == PaymentOutcome.success &&
+                        if (outcome == ResultKind.success &&
                             order.etaAt != null) ...[
                           const SizedBox(height: 8),
                           _row('Arriving by', formatTime(order.etaAt!)),
@@ -92,7 +100,7 @@ class OrderResultScreen extends ConsumerWidget {
                   ),
                 ],
                 const Spacer(flex: 2),
-                if (outcome == PaymentOutcome.failed)
+                if (outcome == ResultKind.failed)
                   FilledButton(
                     key: const ValueKey('retry-button'),
                     // The cart was kept, so this rebuilds home > cart.
@@ -140,37 +148,35 @@ class OrderResultScreen extends ConsumerWidget {
 }
 
 class _ResultView {
-  const _ResultView(this.icon, this.color, this.title, this.message);
+  const _ResultView(this.title, this.message);
 
-  final IconData icon;
-  final Color color;
   final String title;
   final String message;
 
-  static _ResultView of(PaymentOutcome outcome) {
+  static _ResultView of(ResultKind outcome) {
     switch (outcome) {
-      case PaymentOutcome.success:
+      case ResultKind.success:
         return const _ResultView(
-          Icons.check_circle_rounded,
-          AppColors.success,
           'Order placed',
           "We've received your order and will deliver it soon.",
         );
-      case PaymentOutcome.failed:
+      case ResultKind.failed:
         return const _ResultView(
-          Icons.cancel_rounded,
-          AppColors.danger,
           'Payment failed',
           'No order was confirmed. If money was deducted, it will be '
               'refunded automatically. Your cart is saved.',
         );
-      case PaymentOutcome.pending:
+      case ResultKind.pending:
         return const _ResultView(
-          Icons.schedule_rounded,
-          AppColors.warning,
           'Payment pending',
           "We're waiting for your bank to confirm the payment. Your order "
               'will be confirmed as soon as it comes through.',
+        );
+      case ResultKind.refunded:
+        return const _ResultView(
+          'Refund sent',
+          'Your money for this order has been returned to the account you '
+              'paid from. Banks can take a few days to show it.',
         );
     }
   }

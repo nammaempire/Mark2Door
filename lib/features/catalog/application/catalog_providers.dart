@@ -16,6 +16,29 @@ final productsProvider =
       .fetchProducts(categoryId: q.categoryId, query: q.query),
 );
 
+/// The whole catalogue, unfiltered. Shared by the home sections and the
+/// "similar products" rows so they load it once.
+const ProductQuery allProductsQuery = (categoryId: null, query: '');
+
+/// In-stock products to suggest next to [basis], best matches first:
+/// same category as something in [basis], then the rest. Never repeats a
+/// product that is already in [basis].
+List<Product> similarProducts(
+  List<Product> catalogue,
+  Iterable<Product> basis, {
+  int limit = 10,
+}) {
+  final ids = {for (final p in basis) p.id};
+  final categories = {for (final p in basis) p.categoryId};
+  final candidates = catalogue
+      .where((p) => p.inStock && !ids.contains(p.id))
+      .toList(growable: false);
+  return [
+    ...candidates.where((p) => categories.contains(p.categoryId)),
+    ...candidates.where((p) => !categories.contains(p.categoryId)),
+  ].take(limit).toList(growable: false);
+}
+
 final productProvider = FutureProvider.autoDispose.family<Product?, String>(
   (ref, id) => ref.watch(catalogRepositoryProvider).fetchProduct(id),
 );

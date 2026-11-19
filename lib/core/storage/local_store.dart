@@ -20,7 +20,9 @@ class LocalStore {
 
   static const pincodeKey = 'pincode';
   static const cartKey = 'cart';
+  /// Single saved address from older versions; read once to migrate.
   static const addressKey = 'address';
+  static const addressBookKey = 'address_book';
   static const demoSessionKey = 'demo_session_phone';
 
   String? readString(String key) => _prefs.getString(key);

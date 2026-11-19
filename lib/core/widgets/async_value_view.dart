@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_theme.dart';
+import 'shimmer.dart';
 
 /// Renders loading / error / data for an [AsyncValue] in one consistent way.
 class AsyncValueView<T> extends StatelessWidget {
@@ -10,17 +11,21 @@ class AsyncValueView<T> extends StatelessWidget {
     required this.value,
     required this.data,
     this.onRetry,
+    this.loading = const CardListSkeleton(),
   });
 
   final AsyncValue<T> value;
   final Widget Function(T data) data;
   final VoidCallback? onRetry;
 
+  /// Shimmer placeholder shaped like the content that is loading.
+  final Widget loading;
+
   @override
   Widget build(BuildContext context) {
     return value.when(
       data: data,
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => loading,
       error: (error, _) => EmptyState(
         icon: Icons.cloud_off_rounded,
         title: 'Something went wrong',

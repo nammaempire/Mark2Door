@@ -12,7 +12,7 @@ enum PaymentMethod {
   final String label;
 }
 
-enum PaymentStatus { pending, paid, failed }
+enum PaymentStatus { pending, paid, failed, refunded }
 
 /// Lifecycle shared with the delivery app and admin web.
 enum OrderStatus {
@@ -53,6 +53,7 @@ class OrderItem {
     required this.unit,
     required this.pricePaise,
     required this.quantity,
+    this.mrpPaise = 0,
   });
 
   final String productId;
@@ -63,7 +64,14 @@ class OrderItem {
   final int pricePaise;
   final int quantity;
 
+  /// MRP at purchase time; 0 on orders placed before it was recorded.
+  final int mrpPaise;
+
   int get lineTotalPaise => pricePaise * quantity;
+
+  /// Never below the price paid, so savings cannot go negative.
+  int get lineMrpPaise =>
+      (mrpPaise > pricePaise ? mrpPaise : pricePaise) * quantity;
 
   factory OrderItem.fromCart(CartItem item) => OrderItem(
         productId: item.product.id,
@@ -71,6 +79,7 @@ class OrderItem {
         unit: item.product.unit,
         pricePaise: item.product.pricePaise,
         quantity: item.quantity,
+        mrpPaise: item.product.mrpPaise,
       );
 
   Map<String, dynamic> toMap() => {
@@ -79,6 +88,7 @@ class OrderItem {
         'unit': unit,
         'pricePaise': pricePaise,
         'quantity': quantity,
+        'mrpPaise': mrpPaise,
       };
 
   factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem(
@@ -87,6 +97,7 @@ class OrderItem {
         unit: map['unit'] as String? ?? '',
         pricePaise: (map['pricePaise'] as num?)?.toInt() ?? 0,
         quantity: (map['quantity'] as num?)?.toInt() ?? 0,
+        mrpPaise: (map['mrpPaise'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -104,6 +115,9 @@ class Order {
     required this.paymentStatus,
     required this.status,
     required this.createdAt,
+    this.handlingFeePaise = 0,
+    this.rainFeePaise = 0,
+    this.walletAppliedPaise = 0,
     this.etaAt,
     this.paymentId,
     this.riderName,
@@ -115,7 +129,16 @@ class Order {
   final List<OrderItem> items;
   final int subtotalPaise;
   final int deliveryFeePaise;
+
+  /// Extra charges that were switched on when the order was placed.
+  final int handlingFeePaise;
+  final int rainFeePaise;
+
+  /// Full value of the order: items plus every fee.
   final int totalPaise;
+
+  /// Part of [totalPaise] paid from the shopper's m2d wallet.
+  final int walletAppliedPaise;
   final Address address;
   final PaymentMethod paymentMethod;
   final PaymentStatus paymentStatus;
@@ -136,6 +159,21 @@ class Order {
       '#${(id.length <= 6 ? id : id.substring(id.length - 6)).toUpperCase()}';
 
   int get itemCount => items.fold(0, (sum, i) => sum + i.quantity);
+
+  /// What is left to pay online or in cash after the wallet.
+  int get payablePaise => totalPaise - walletAppliedPaise;
+
+  /// MRP value of the items, for the struck-through total and savings.
+  int get mrpTotalPaise => items.fold(0, (sum, i) => sum + i.lineMrpPaise);
+
+  /// The money for this order has been returned to the customer.
+  bool get isRefunded => paymentStatus == PaymentStatus.refunded;
+
+  /// Paid online, then cancelled, and the refund is not recorded yet.
+  bool get refundInProgress =>
+      status == OrderStatus.cancelled &&
+      paymentMethod == PaymentMethod.online &&
+      paymentStatus == PaymentStatus.paid;
 
   bool get awaitingPayment =>
       paymentMethod == PaymentMethod.online &&
@@ -187,7 +225,10 @@ class Order {
         items: items,
         subtotalPaise: subtotalPaise,
         deliveryFeePaise: deliveryFeePaise,
+        handlingFeePaise: handlingFeePaise,
+        rainFeePaise: rainFeePaise,
         totalPaise: totalPaise,
+        walletAppliedPaise: walletAppliedPaise,
         address: address,
         paymentMethod: paymentMethod,
         paymentStatus: paymentStatus ?? this.paymentStatus,
@@ -204,7 +245,10 @@ class Order {
         'items': items.map((i) => i.toMap()).toList(),
         'subtotalPaise': subtotalPaise,
         'deliveryFeePaise': deliveryFeePaise,
+        'handlingFeePaise': handlingFeePaise,
+        'rainFeePaise': rainFeePaise,
         'totalPaise': totalPaise,
+        'walletAppliedPaise': walletAppliedPaise,
         'address': address.toMap(),
         'paymentMethod': paymentMethod.name,
         'paymentStatus': paymentStatus.name,
@@ -222,7 +266,10 @@ class Order {
             .toList(growable: false),
         subtotalPaise: (map['subtotalPaise'] as num?)?.toInt() ?? 0,
         deliveryFeePaise: (map['deliveryFeePaise'] as num?)?.toInt() ?? 0,
+        handlingFeePaise: (map['handlingFeePaise'] as num?)?.toInt() ?? 0,
+        rainFeePaise: (map['rainFeePaise'] as num?)?.toInt() ?? 0,
         totalPaise: (map['totalPaise'] as num?)?.toInt() ?? 0,
+        walletAppliedPaise: (map['walletAppliedPaise'] as num?)?.toInt() ?? 0,
         address: Address.fromMap(
           Map<String, dynamic>.from((map['address'] as Map?) ?? const {}),
         ),

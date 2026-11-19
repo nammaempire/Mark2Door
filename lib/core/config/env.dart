@@ -1,9 +1,21 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 /// Compile-time configuration, supplied with `--dart-define`.
 ///
-/// flutter run --dart-define=USE_FIREBASE=true --dart-define=RAZORPAY_KEY=rzp_test_xxx
+/// flutter run --dart-define=RAZORPAY_KEY=rzp_test_xxx
 abstract final class Env {
-  /// false => in-memory sample data, no backend required.
-  static const bool useFirebase = bool.fromEnvironment('USE_FIREBASE');
+  /// The app uses Firebase unless it is started with
+  /// `--dart-define=USE_FIREBASE=false`, which switches to in-memory sample
+  /// data. Automated tests always run on sample data.
+  static final bool useFirebase = _firebaseFlag && !_runningTests;
+
+  static const bool _firebaseFlag =
+      bool.fromEnvironment('USE_FIREBASE', defaultValue: true);
+
+  static bool get _runningTests =>
+      !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
 
   /// Empty => simulated payment sheet instead of the Razorpay checkout.
   static const String razorpayKey = String.fromEnvironment('RAZORPAY_KEY');

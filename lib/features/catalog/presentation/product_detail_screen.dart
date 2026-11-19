@@ -6,6 +6,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/shimmer.dart';
 import '../../cart/application/cart_controller.dart';
 import '../../store/application/store_providers.dart';
 import '../application/catalog_providers.dart';
@@ -44,6 +45,7 @@ class ProductDetailScreen extends ConsumerWidget {
       ),
       body: AsyncValueView(
         value: product,
+        loading: const DetailSkeleton(),
         onRetry: () => ref.invalidate(productProvider(productId)),
         data: (p) => p == null
             ? const EmptyState(
@@ -64,12 +66,11 @@ class _Body extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ProductQuery relatedQuery =
-        (categoryId: product.categoryId, query: '');
-    final related = (ref.watch(productsProvider(relatedQuery)).valueOrNull ??
-            const <Product>[])
-        .where((p) => p.id != product.id)
-        .toList(growable: false);
+    final catalogue = ref.watch(productsProvider(allProductsQuery));
+    final related = similarProducts(
+      catalogue.valueOrNull ?? const <Product>[],
+      [product],
+    );
     final savedPaise = product.mrpPaise - product.pricePaise;
     final eta = ref.watch(storeSettingsProvider).deliveryEtaMinutes;
 
@@ -88,7 +89,7 @@ class _Body extends ConsumerWidget {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        ProductImage(product: product, artSize: 132),
+                        ProductImageCarousel(product: product),
                         if (product.discountPercent > 0)
                           Align(
                             alignment: Alignment.topLeft,
@@ -194,11 +195,11 @@ class _Body extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (related.isNotEmpty) ...[
+              if (catalogue.isLoading || related.isNotEmpty) ...[
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 24, 16, 10),
                   child: Text(
-                    'You might also like',
+                    'Similar products',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -206,7 +207,10 @@ class _Body extends ConsumerWidget {
                     ),
                   ),
                 ),
-                ProductRail(products: related, keyPrefix: 'related'),
+                if (related.isEmpty)
+                  const ProductRailSkeleton()
+                else
+                  ProductRail(products: related, keyPrefix: 'related'),
               ],
             ],
           ),
@@ -295,6 +299,104 @@ class _Perk extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Swipeable photos for the product page: up to [Product.maxImages], with
+/// page dots and a counter. A product with one photo, or none, shows a
+/// single picture with no controls.
+class ProductImageCarousel extends StatefulWidget {
+  const ProductImageCarousel({super.key, required this.product});
+
+  final Product product;
+
+  @override
+  State<ProductImageCarousel> createState() => _ProductImageCarouselState();
+}
+
+class _ProductImageCarouselState extends State<ProductImageCarousel> {
+  final _controller = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final product = widget.product;
+    final images = product.imageUrls;
+    if (images.length <= 1) {
+      return ProductImage(product: product, artSize: 132);
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PageView.builder(
+          key: const ValueKey('product-image-carousel'),
+          controller: _controller,
+          itemCount: images.length,
+          onPageChanged: (i) => setState(() => _page = i),
+          itemBuilder: (context, i) => Image.network(
+            images[i],
+            fit: BoxFit.cover,
+            semanticLabel: '${product.name}, photo ${i + 1}',
+            // A broken link falls back to the product's artwork.
+            errorBuilder: (_, __, ___) =>
+                ProductArt(product: product, artSize: 132),
+            loadingBuilder: (_, child, progress) => progress == null
+                ? child
+                : const Shimmer(child: SkeletonBox(radius: 0)),
+          ),
+        ),
+        Positioned(
+          right: 12,
+          top: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0x99000000),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '${_page + 1}/${images.length}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 12,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < images.length; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: i == _page ? 18 : 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: i == _page ? Colors.white : const Color(0x99FFFFFF),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x33000000), blurRadius: 3),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

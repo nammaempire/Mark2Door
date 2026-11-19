@@ -7,6 +7,7 @@ import '../../../core/theme/app_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../cart/application/cart_controller.dart';
+import '../../service_area/application/pincode_controller.dart';
 import '../../store/application/store_providers.dart';
 import '../application/catalog_providers.dart';
 import '../domain/product.dart';
@@ -92,10 +93,10 @@ class EmojiText extends StatelessWidget {
   }
 }
 
-/// Product photo, with tinted artwork while loading, on error, or when the
-/// admin has not uploaded an image yet.
-class ProductImage extends ConsumerWidget {
-  const ProductImage({super.key, required this.product, this.artSize = 56});
+/// Tinted artwork for a product: its emoji, or its category's, on a soft
+/// gradient. Stands in for a photo that is missing, loading or broken.
+class ProductArt extends ConsumerWidget {
+  const ProductArt({super.key, required this.product, this.artSize = 56});
 
   final Product product;
   final double artSize;
@@ -104,7 +105,7 @@ class ProductImage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final style = ref.watch(categoryStyleProvider(product.categoryId));
     final artColors = context.palette.artColors;
-    final placeholder = DecoratedBox(
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: artColors != null
             ? LinearGradient(
@@ -121,6 +122,20 @@ class ProductImage extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// Product photo, with [ProductArt] while loading, on error, or when the
+/// admin has not added a photo yet.
+class ProductImage extends StatelessWidget {
+  const ProductImage({super.key, required this.product, this.artSize = 56});
+
+  final Product product;
+  final double artSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = ProductArt(product: product, artSize: artSize);
     if (product.imageUrl.isEmpty) return placeholder;
     return Image.network(
       product.imageUrl,
@@ -212,6 +227,42 @@ class QtyStepper extends ConsumerWidget {
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppColors.textMuted,
+          ),
+        ),
+      );
+    }
+
+    if (qty == 0 && !ref.watch(canOrderProvider)) {
+      // Outside the delivery area: browsing only.
+      return Material(
+        color: AppColors.background,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: const BorderSide(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: ValueKey('$keyPrefix-${product.id}'),
+          onTap: () => ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text("Sorry, we don't deliver to your pincode yet."),
+              ),
+            ),
+          child: SizedBox(
+            height: height,
+            child: const Center(
+              child: Text(
+                'ADD',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
           ),
         ),
       );

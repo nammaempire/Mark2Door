@@ -60,7 +60,14 @@ class Cart {
           ? 0
           : fees.deliveryFeePaise;
 
-  int get totalPaise => subtotalPaise + deliveryFeePaise;
+  /// Admin-controlled extras; 0 while switched off or the cart is empty.
+  int get handlingFeePaise =>
+      isEmpty || !fees.handlingFeeEnabled ? 0 : fees.handlingFeePaise;
+  int get rainFeePaise =>
+      isEmpty || !fees.rainFeeEnabled ? 0 : fees.rainFeePaise;
+
+  int get totalPaise =>
+      subtotalPaise + deliveryFeePaise + handlingFeePaise + rainFeePaise;
 
   /// How much more to add for free delivery; 0 once unlocked.
   int get toFreeDeliveryPaise {

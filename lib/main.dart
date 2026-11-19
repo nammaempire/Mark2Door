@@ -7,14 +7,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'core/config/env.dart';
 import 'core/storage/local_store.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   if (Env.useFirebase) {
-    // Requires `flutterfire configure` to have been run (see README).
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   }
   final prefs = await SharedPreferences.getInstance();
 

@@ -30,6 +30,18 @@ class Address {
         'pincode': pincode,
       };
 
+  @override
+  bool operator ==(Object other) =>
+      other is Address &&
+      other.name == name &&
+      other.phone == phone &&
+      other.line1 == line1 &&
+      other.landmark == landmark &&
+      other.pincode == pincode;
+
+  @override
+  int get hashCode => Object.hash(name, phone, line1, landmark, pincode);
+
   factory Address.fromMap(Map<String, dynamic> map) => Address(
         name: map['name'] as String? ?? '',
         phone: map['phone'] as String? ?? '',

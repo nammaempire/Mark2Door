@@ -7,7 +7,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../domain/promo.dart';
-import 'product_widgets.dart';
+import 'banner_art.dart';
 
 /// Auto-advancing banner carousel with page dots.
 class PromoCarousel extends StatefulWidget {
@@ -100,109 +100,27 @@ class _PromoCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: colors,
-        ),
         boxShadow: context.palette.elevation,
       ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          borderRadius: radius,
-          onTap: () => context.push(Routes.category(promo.categoryId)),
-          child: ClipRRect(
-            borderRadius: radius,
-            child: Stack(
-              children: [
-                // Decorative circles behind the artwork.
-                const Positioned(
-                  right: -36,
-                  top: -36,
-                  child: _Bubble(size: 150),
-                ),
-                const Positioned(
-                  right: 60,
-                  bottom: -50,
-                  child: _Bubble(size: 100),
-                ),
-                Positioned(
-                  right: 14,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(child: EmojiText(promo.emoji, size: 76)),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 110, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        promo.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 19,
-                          height: 1.2,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        promo.subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xE6FFFFFF),
-                          fontSize: 13,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Shop now',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: colors.last,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          BannerArt(
+            title: promo.title,
+            subtitle: promo.subtitle,
+            emoji: promo.emoji,
+            colors: colors,
+            layout: promo.layout,
+          ),
+          // The whole card is the tap target, whichever design is drawn.
+          Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: radius,
+              onTap: () => context.push(Routes.category(promo.categoryId)),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Color(0x24FFFFFF),
-        shape: BoxShape.circle,
+        ],
       ),
     );
   }

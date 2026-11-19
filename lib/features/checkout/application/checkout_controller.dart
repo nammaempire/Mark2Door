@@ -2,32 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/storage/local_store.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../cart/application/cart_controller.dart';
 import '../../orders/domain/order.dart';
+import '../../rewards/application/rewards_providers.dart';
 import '../../store/application/store_providers.dart';
 import '../data/payment_gateway.dart';
 import '../domain/address.dart';
-
-/// Last delivery address used on this device; pre-fills the checkout form.
-final savedAddressProvider =
-    NotifierProvider<SavedAddressController, Address?>(
-  SavedAddressController.new,
-);
-
-class SavedAddressController extends Notifier<Address?> {
-  @override
-  Address? build() {
-    final map = ref.read(localStoreProvider).readJson(LocalStore.addressKey);
-    return map == null ? null : Address.fromMap(map);
-  }
-
-  void save(Address address) {
-    state = address;
-    ref.read(localStoreProvider).writeJson(LocalStore.addressKey, address.toMap());
-  }
-}
+import 'address_book.dart';
 
 @immutable
 class CheckoutResult {
@@ -58,11 +40,12 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
   Future<CheckoutResult?> placeOrder({
     required Address address,
     required PaymentMethod method,
+    bool useWallet = false,
   }) async {
     if (state.isLoading) return null; // guard against double taps
     state = const AsyncLoading();
     try {
-      final result = await _placeOrder(address, method);
+      final result = await _placeOrder(address, method, useWallet);
       state = const AsyncData(null);
       return result;
     } on CheckoutFailure catch (e, st) {
@@ -80,6 +63,7 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
   Future<CheckoutResult> _placeOrder(
     Address address,
     PaymentMethod method,
+    bool useWallet,
   ) async {
     final user = ref.read(currentUserProvider);
     final cart = ref.read(cartProvider);
@@ -97,6 +81,9 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
 
     final orders = ref.read(orderRepositoryProvider);
     final now = DateTime.now();
+    final walletApplied = useWallet
+        ? walletAmountFor(cart.totalPaise, ref.read(walletBalanceProvider))
+        : 0;
     final order = await orders.create(
       Order(
         id: '',
@@ -104,7 +91,10 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
         items: cart.lines.map(OrderItem.fromCart).toList(growable: false),
         subtotalPaise: cart.subtotalPaise,
         deliveryFeePaise: cart.deliveryFeePaise,
+        handlingFeePaise: cart.handlingFeePaise,
+        rainFeePaise: cart.rainFeePaise,
         totalPaise: cart.totalPaise,
+        walletAppliedPaise: walletApplied,
         address: address,
         paymentMethod: method,
         paymentStatus: PaymentStatus.pending,
@@ -117,9 +107,16 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
         ),
       ),
     );
-    ref.read(savedAddressProvider.notifier).save(address);
+    ref.read(addressBookProvider.notifier).use(address);
 
     if (method == PaymentMethod.cod) {
+      ref.read(cartProvider.notifier).clear();
+      return CheckoutResult(orderId: order.id, outcome: PaymentOutcome.success);
+    }
+
+    if (order.payablePaise == 0) {
+      // The wallet covered everything, so there is nothing to charge.
+      await orders.updatePayment(order.id, paymentStatus: PaymentStatus.paid);
       ref.read(cartProvider.notifier).clear();
       return CheckoutResult(orderId: order.id, outcome: PaymentOutcome.success);
     }
@@ -127,7 +124,7 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
     final payment = await ref.read(paymentGatewayProvider).pay(
           PaymentRequest(
             orderId: order.id,
-            amountPaise: order.totalPaise,
+            amountPaise: order.payablePaise,
             phone: address.phone,
             description: 'Order ${order.displayId}',
           ),
@@ -157,4 +154,11 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
     }
     return CheckoutResult(orderId: order.id, outcome: payment.outcome);
   }
+}
+
+/// How much of [balancePaise] goes towards an order of [totalPaise]: all of
+/// it, up to the order's value.
+int walletAmountFor(int totalPaise, int balancePaise) {
+  if (balancePaise <= 0 || totalPaise <= 0) return 0;
+  return balancePaise < totalPaise ? balancePaise : totalPaise;
 }

@@ -28,7 +28,7 @@ class Product {
     required this.unit,
     required this.pricePaise,
     required this.mrpPaise,
-    this.imageUrl = '',
+    this.imageUrls = const [],
     this.emoji = '',
     this.description = '',
     this.inStock = true,
@@ -42,12 +42,20 @@ class Product {
   final String unit;
   final int pricePaise;
   final int mrpPaise;
-  final String imageUrl;
+
+  /// Up to [maxImages] photos added in the admin web; the first is the
+  /// main photo used in lists.
+  final List<String> imageUrls;
 
   /// Optional artwork shown until a photo is uploaded, e.g. "🍌".
   final String emoji;
   final String description;
   final bool inStock;
+
+  static const maxImages = 5;
+
+  /// Main photo, or empty when the product only has artwork.
+  String get imageUrl => imageUrls.isEmpty ? '' : imageUrls.first;
 
   int get discountPercent => mrpPaise <= pricePaise
       ? 0
@@ -60,7 +68,7 @@ class Product {
         unit: map['unit'] as String? ?? '',
         pricePaise: (map['pricePaise'] as num?)?.toInt() ?? 0,
         mrpPaise: (map['mrpPaise'] as num?)?.toInt() ?? 0,
-        imageUrl: map['imageUrl'] as String? ?? '',
+        imageUrls: _readImages(map),
         emoji: map['emoji'] as String? ?? '',
         description: map['description'] as String? ?? '',
         inStock: map['inStock'] as bool? ?? true,
@@ -74,6 +82,7 @@ class Product {
         'pricePaise': pricePaise,
         'mrpPaise': mrpPaise,
         'imageUrl': imageUrl,
+        'imageUrls': imageUrls,
         'emoji': emoji,
         'description': description,
         'inStock': inStock,
@@ -84,4 +93,18 @@ class Product {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+/// Reads `imageUrls`, falling back to the single `imageUrl` of products
+/// saved before several photos were supported.
+List<String> _readImages(Map<String, dynamic> map) {
+  final list = [
+    for (final e in (map['imageUrls'] as List?) ?? const [])
+      if (e is String && e.trim().isNotEmpty) e.trim(),
+  ];
+  if (list.isEmpty) {
+    final single = (map['imageUrl'] as String? ?? '').trim();
+    if (single.isNotEmpty) list.add(single);
+  }
+  return List.unmodifiable(list.take(Product.maxImages));
 }

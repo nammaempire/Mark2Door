@@ -10,7 +10,9 @@ import '../../../core/theme/app_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
+import '../../../core/widgets/shimmer.dart';
 import '../../service_area/application/pincode_controller.dart';
+import '../../service_area/presentation/delivery_banner.dart';
 import '../../store/application/store_providers.dart';
 import '../application/catalog_providers.dart';
 import '../domain/product.dart';
@@ -58,10 +60,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return deals.take(6).toList(growable: false);
   }
 
+  /// Cheapest in-stock items at or under ₹99, for the "Budget buys" rail.
+  static List<Product> _budget(List<Product> all) {
+    final cheap = all
+        .where((p) => p.inStock && p.pricePaise <= 9900)
+        .toList()
+      ..sort((a, b) => a.pricePaise.compareTo(b.pricePaise));
+    return cheap.take(8).toList(growable: false);
+  }
+
+  /// One rail per category that has at least two products, in the
+  /// categories' own order. Small catalogues simply get fewer rails.
+  static List<({Category category, List<Product> products})> _byCategory(
+    List<Category> categories,
+    List<Product> all,
+  ) {
+    return [
+      for (final c in categories)
+        (
+          category: c,
+          products: all
+              .where((p) => p.categoryId == c.id && p.inStock)
+              .take(8)
+              .toList(growable: false),
+        ),
+    ].where((r) => r.products.length >= 2).take(4).toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final ProductQuery query = (categoryId: null, query: _query);
     final products = ref.watch(productsProvider(query));
+    final categories =
+        ref.watch(categoriesProvider).valueOrNull ?? const <Category>[];
     final searching = _query.isNotEmpty;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -89,6 +120,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           child: _SectionTitle('Results for "$_query"'),
                         )
                       else ...const [
+                        SliverToBoxAdapter(
+                          child: NotServiceableBanner(
+                            margin: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          ),
+                        ),
                         SliverToBoxAdapter(child: SizedBox(height: 16)),
                         SliverToBoxAdapter(child: _PromoSection()),
                         SliverToBoxAdapter(
@@ -96,6 +132,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                         SliverToBoxAdapter(child: _CategoryStrip()),
                         SliverToBoxAdapter(child: _FreeDeliveryStrip()),
+                        SliverToBoxAdapter(child: _PerksStrip()),
                       ],
                       ...products.when(
                         data: (items) => [
@@ -123,21 +160,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 ),
                               ),
                             ],
-                            if (!searching)
+                            if (!searching) ...[
+                              for (final rail in _byCategory(categories, items))
+                                ...[
+                                  SliverToBoxAdapter(
+                                    child: _SectionTitle(
+                                      rail.category.name,
+                                      topPadding: 0,
+                                      actionLabel: 'See all',
+                                      onAction: () => context.push(
+                                        Routes.category(rail.category.id),
+                                      ),
+                                    ),
+                                  ),
+                                  SliverToBoxAdapter(
+                                    child: ProductRail(
+                                      products: rail.products,
+                                      keyPrefix: 'cat-${rail.category.id}',
+                                    ),
+                                  ),
+                                ],
+                              if (_budget(items).length >= 2) ...[
+                                const SliverToBoxAdapter(
+                                  child: _SectionTitle(
+                                    'Budget buys under ₹99',
+                                    icon: Icons.savings_rounded,
+                                    topPadding: 0,
+                                  ),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: ProductRail(
+                                    products: _budget(items),
+                                    keyPrefix: 'budget',
+                                  ),
+                                ),
+                              ],
                               const SliverToBoxAdapter(
                                 child: _SectionTitle(
-                                  'Popular near you',
+                                  'All products',
                                   topPadding: 0,
                                 ),
                               ),
+                            ],
                             ProductGrid(products: items),
                           ],
                         ],
-                        loading: () => const [
-                          SliverFillRemaining(
-                            hasScrollBody: false,
-                            child: Center(child: CircularProgressIndicator()),
-                          ),
+                        loading: () => [
+                          if (!searching) ...const [
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.fromLTRB(16, 26, 16, 16),
+                                child: Shimmer(
+                                  child: SkeletonBox.line(
+                                    width: 150,
+                                    height: 18,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SliverToBoxAdapter(child: ProductRailSkeleton()),
+                          ],
+                          const ProductGridSkeleton(),
                         ],
                         error: (_, __) => [
                           SliverFillRemaining(
@@ -335,19 +418,29 @@ class _PromoSection extends ConsumerWidget {
           data: (promos) => promos.isEmpty
               ? const SizedBox.shrink()
               : PromoCarousel(promos: promos),
-          // Reserve the carousel's height so content below does not jump.
-          loading: () => const SizedBox(height: 180),
+          // Same height as the carousel so content below does not jump.
+          loading: () => const BannerSkeleton(),
           error: (_, __) => const SizedBox.shrink(),
         );
   }
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text, {this.icon, this.topPadding = 22});
+  const _SectionTitle(
+    this.text, {
+    this.icon,
+    this.topPadding = 22,
+    this.actionLabel,
+    this.onAction,
+  });
 
   final String text;
   final IconData? icon;
   final double topPadding;
+
+  /// Optional link on the right, e.g. "See all".
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -372,6 +465,89 @@ class _SectionTitle extends StatelessWidget {
               ),
             ),
           ),
+          if (actionLabel != null && onAction != null)
+            InkWell(
+              onTap: onAction,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      actionLabel!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: context.palette.primary,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: context.palette.primary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Three short promises under the free-delivery strip.
+class _PerksStrip extends ConsumerWidget {
+  const _PerksStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final eta = ref.watch(storeSettingsProvider).deliveryEtaMinutes;
+    Widget perk(IconData icon, String title, String subtitle) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: context.palette.elevation,
+            ),
+            child: Column(
+              children: [
+                Icon(icon, size: 22, color: context.palette.primary),
+                const SizedBox(height: 6),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Row(
+        children: [
+          perk(Icons.bolt_rounded, '$eta min', 'delivery'),
+          const SizedBox(width: 10),
+          perk(Icons.verified_rounded, 'Fresh', 'quality checked'),
+          const SizedBox(width: 10),
+          perk(Icons.sell_rounded, 'Best prices', 'every day'),
         ],
       ),
     );
@@ -387,7 +563,7 @@ class _CategoryStrip extends ConsumerWidget {
     return SizedBox(
       height: 124,
       child: categories.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const CategoryStripSkeleton(),
         error: (_, __) => const SizedBox.shrink(),
         data: (items) => ListView.separated(
           scrollDirection: Axis.horizontal,
