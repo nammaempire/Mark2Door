@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/env.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
@@ -117,6 +118,19 @@ class _Body extends ConsumerWidget {
                         color: AppColors.textDark,
                       ),
                     ),
+                    if (product.subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        product.subtitle,
+                        key: const ValueKey('product-subtitle'),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       product.unit,
@@ -125,6 +139,20 @@ class _Body extends ConsumerWidget {
                         color: AppColors.textMuted,
                       ),
                     ),
+                    if (product.inStock &&
+                        product.stockQty != null &&
+                        product.stockQty! <= AppConfig.maxQtyPerItem) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Only ${product.stockQty} left in stock',
+                        key: const ValueKey('low-stock'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accentDark,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Row(
                       children: [

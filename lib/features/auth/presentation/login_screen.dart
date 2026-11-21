@@ -8,6 +8,7 @@ import '../../../core/providers.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
+import '../../support/data/content_repository.dart';
 import '../domain/app_user.dart';
 import 'auth_header.dart';
 import 'otp_screen.dart';
@@ -127,18 +128,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: LoadingLabel('Get OTP', loading: _loading),
                       ),
                       const SizedBox(height: 28),
-                      const Center(
-                        child: Text(
-                          'By continuing, you agree to our\n'
-                          'Terms of Service and Privacy Policy',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.5,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ),
+                      const Center(child: _LegalLinks()),
                     ],
                   ),
                 ),
@@ -176,6 +166,55 @@ class _CountryPrefix extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// "By continuing, you agree to our Terms and conditions and Privacy
+/// policy", where both names open the page the store has published.
+class _LegalLinks extends StatelessWidget {
+  const _LegalLinks();
+
+  @override
+  Widget build(BuildContext context) {
+    const plain = TextStyle(
+      fontSize: 12,
+      height: 1.5,
+      color: AppColors.textMuted,
+    );
+    Widget link(String key, String label, String pageId) => InkWell(
+          key: ValueKey(key),
+          onTap: () => context.push(Routes.publicLegal(pageId)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+            child: Text(
+              label,
+              style: plain.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+                decoration: TextDecoration.underline,
+                decorationColor: AppColors.primary,
+              ),
+            ),
+          ),
+        );
+    return Column(
+      children: [
+        const Text('By continuing, you agree to our', style: plain),
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            link(
+              'login-terms-link',
+              'Terms and conditions',
+              LegalPage.termsId,
+            ),
+            const Text(' and ', style: plain),
+            link('login-privacy-link', 'Privacy policy', LegalPage.privacyId),
+          ],
+        ),
+      ],
     );
   }
 }

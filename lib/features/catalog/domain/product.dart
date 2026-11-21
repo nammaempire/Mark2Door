@@ -30,9 +30,11 @@ class Product {
     required this.mrpPaise,
     this.imageUrls = const [],
     this.emoji = '',
+    this.subtitle = '',
     this.description = '',
-    this.inStock = true,
-  });
+    bool inStock = true,
+    this.stockQty,
+  }) : available = inStock;
 
   final String id;
   final String name;
@@ -49,8 +51,27 @@ class Product {
 
   /// Optional artwork shown until a photo is uploaded, e.g. "🍌".
   final String emoji;
+
+  /// Short line under the name on the product page, e.g. "Fresh from Ooty".
+  final String subtitle;
   final String description;
-  final bool inStock;
+
+  /// The admin's "In stock" switch.
+  final bool available;
+
+  /// Units the store has left. Null when the admin does not count stock
+  /// for this product, which means there is no stock limit.
+  final int? stockQty;
+
+  /// Can be ordered: switched on by the admin and not counted down to zero.
+  bool get inStock => available && (stockQty == null || stockQty! > 0);
+
+  /// The most one order may contain, given a per-order [cap].
+  int maxPerOrder(int cap) {
+    final left = stockQty;
+    if (!inStock) return 0;
+    return left == null || left > cap ? cap : left;
+  }
 
   static const maxImages = 5;
 
@@ -70,8 +91,10 @@ class Product {
         mrpPaise: (map['mrpPaise'] as num?)?.toInt() ?? 0,
         imageUrls: _readImages(map),
         emoji: map['emoji'] as String? ?? '',
+        subtitle: map['subtitle'] as String? ?? '',
         description: map['description'] as String? ?? '',
         inStock: map['inStock'] as bool? ?? true,
+        stockQty: (map['stockQty'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toMap() => {
@@ -84,8 +107,10 @@ class Product {
         'imageUrl': imageUrl,
         'imageUrls': imageUrls,
         'emoji': emoji,
+        'subtitle': subtitle,
         'description': description,
-        'inStock': inStock,
+        'inStock': available,
+        'stockQty': stockQty,
       };
 
   @override

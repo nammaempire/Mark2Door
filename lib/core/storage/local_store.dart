@@ -19,6 +19,7 @@ class LocalStore {
   final SharedPreferences _prefs;
 
   static const pincodeKey = 'pincode';
+  static const customerNameKey = 'customer_name';
   static const cartKey = 'cart';
   /// Single saved address from older versions; read once to migrate.
   static const addressKey = 'address';

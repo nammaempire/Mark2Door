@@ -46,6 +46,9 @@ abstract final class Routes {
   static const wallet = '/profile/wallet';
   static const help = '/profile/help';
   static String legal(String pageId) => '/profile/legal/$pageId';
+
+  /// The same legal pages, readable before logging in.
+  static String publicLegal(String pageId) => '/legal/$pageId';
   static String orderResult(String id, PaymentOutcome outcome) =>
       '/home/order-result/$id?outcome=${outcome.name}';
 }
@@ -65,6 +68,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final location = state.matchedLocation;
       if (location == Routes.splash) return null;
+
+      // Terms and the privacy policy can be read without an account.
+      if (location.startsWith('/legal/')) return null;
 
       final loggedIn = ref.read(authRepositoryProvider).currentUser != null;
       final onAuthPage = location == Routes.login || location == Routes.otp;
@@ -93,6 +99,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.pincode,
         builder: (context, state) => const PincodeScreen(),
+      ),
+      GoRoute(
+        path: '/legal/:page',
+        builder: (context, state) => LegalScreen(
+          pageId: state.pathParameters['page']!,
+        ),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => HomeShell(shell: shell),

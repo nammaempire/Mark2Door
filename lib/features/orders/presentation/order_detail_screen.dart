@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
@@ -11,6 +12,7 @@ import '../../cart/presentation/bill_summary.dart';
 import '../application/order_providers.dart';
 import '../domain/order.dart';
 import 'eta_widgets.dart';
+import 'live_order_card.dart';
 import 'orders_screen.dart';
 
 class OrderDetailScreen extends ConsumerWidget {
@@ -86,15 +88,27 @@ class _Body extends StatelessWidget {
         EtaBanner(order: order),
         if (order.isRefunded || order.refundInProgress)
           _RefundBanner(order: order),
-        if (order.status != OrderStatus.cancelled) ...[
-          const SectionLabel('Order status'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: _Timeline(current: order.status),
+        if (order.status == OrderStatus.cancelled &&
+            order.cancelledBy == 'customer')
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: Text(
+              'You cancelled this order.',
+              key: ValueKey('cancelled-by-you'),
+              style: TextStyle(color: AppColors.textMuted),
             ),
           ),
+        if (order.status != OrderStatus.cancelled) ...[
+          const SectionLabel('Order status'),
+          LiveOrderCard(
+            key: const ValueKey('order-status-card'),
+            order: order,
+            showOrderId: false,
+            showEta: false,
+          ),
         ],
+        if (order.status == OrderStatus.delivered && order.riderName != null)
+          _RateDelivery(order: order),
         const SectionLabel('Items'),
         Card(
           child: Column(
@@ -127,6 +141,8 @@ class _Body extends StatelessWidget {
           handlingFeePaise: order.handlingFeePaise,
           rainFeePaise: order.rainFeePaise,
           walletAppliedPaise: order.walletAppliedPaise,
+          couponCode: order.couponCode,
+          couponDiscountPaise: order.couponDiscountPaise,
           totalPaise: order.totalPaise,
           totalLabel: 'Total',
           savingsVerb: 'You saved',
@@ -179,7 +195,114 @@ class _Body extends StatelessWidget {
             ],
           ),
         ),
+        if (order.canCancel) _CancelOrder(order: order),
       ],
+    );
+  }
+}
+
+/// "Cancel order", offered until the delivery partner has picked the order
+/// up. Asks first, and says where any money already paid will go.
+class _CancelOrder extends ConsumerStatefulWidget {
+  const _CancelOrder({required this.order});
+
+  final Order order;
+
+  @override
+  ConsumerState<_CancelOrder> createState() => _CancelOrderState();
+}
+
+class _CancelOrderState extends ConsumerState<_CancelOrder> {
+  bool _busy = false;
+
+  /// What happens to money already paid, if any.
+  List<String> get _refundLines {
+    final o = widget.order;
+    final paidOnline = o.paymentMethod == PaymentMethod.online &&
+        o.paymentStatus == PaymentStatus.paid &&
+        o.payablePaise > 0;
+    return [
+      if (o.walletAppliedPaise > 0)
+        '${formatPaise(o.walletAppliedPaise)} will be returned to your '
+            'm2d wallet.',
+      if (paidOnline)
+        '${formatPaise(o.payablePaise)} paid online will be refunded to the '
+            'account you paid from.',
+    ];
+  }
+
+  Future<void> _cancel() async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel this order?'),
+        content: Text(
+          [
+            'Order ${widget.order.displayId} will not be delivered.',
+            ..._refundLines,
+          ].join('\n\n'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep order'),
+          ),
+          TextButton(
+            key: const ValueKey('confirm-cancel-button'),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Cancel order'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(orderRepositoryProvider).cancel(widget.order.id);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Order cancelled.')));
+    } catch (_) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not cancel. The order may already be on its way.',
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(
+        children: [
+          OutlinedButton.icon(
+            key: const ValueKey('cancel-order-button'),
+            onPressed: _busy ? null : _cancel,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.danger,
+              side: const BorderSide(color: AppColors.danger),
+            ),
+            icon: const Icon(Icons.cancel_outlined),
+            label: Text(_busy ? 'Cancelling' : 'Cancel order'),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'You can cancel until your order leaves the store.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -266,68 +389,129 @@ class _RefundBanner extends StatelessWidget {
   }
 }
 
-/// Vertical progress through the delivery lifecycle. The delivery app and
-/// admin web advance `status`; this screen updates live from the stream.
-class _Timeline extends StatelessWidget {
-  const _Timeline({required this.current});
+/// Lets the shopper rate the delivery partner once the order is delivered.
+/// Stars are picked first and sent with Submit, because a rating cannot be
+/// changed afterwards.
+class _RateDelivery extends ConsumerStatefulWidget {
+  const _RateDelivery({required this.order});
 
-  final OrderStatus current;
+  final Order order;
 
-  static const _steps = [
-    OrderStatus.placed,
-    OrderStatus.accepted,
-    OrderStatus.pickedUp,
-    OrderStatus.delivered,
-  ];
+  @override
+  ConsumerState<_RateDelivery> createState() => _RateDeliveryState();
+}
+
+class _RateDeliveryState extends ConsumerState<_RateDelivery> {
+  static const _words = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
+
+  int _picked = 0;
+  bool _saving = false;
+
+  Future<void> _submit() async {
+    if (_saving || _picked == 0) return;
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(orderRepositoryProvider)
+          .rateDelivery(widget.order.id, _picked);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Thanks for rating your delivery')),
+      );
+    } on Exception {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't save your rating. Try again."),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _steps.indexOf(current);
-    return Column(
-      children: [
-        for (final (i, step) in _steps.indexed)
-          Row(
+    final saved = widget.order.riderRating;
+    final stars = saved ?? _picked;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
+              Row(
                 children: [
-                  Icon(
-                    i <= currentIndex
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 22,
-                    color: i <= currentIndex
-                        ? AppColors.primary
-                        : AppColors.border,
+                  Expanded(
+                    child: Text(
+                      saved == null
+                          ? 'Rate your delivery'
+                          : 'You rated this delivery',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                      ),
+                    ),
                   ),
-                  if (i < _steps.length - 1)
-                    Container(
-                      width: 2,
-                      height: 22,
-                      color: i < currentIndex
-                          ? AppColors.primary
-                          : AppColors.border,
+                  // What the picked stars mean, e.g. "Very good".
+                  Text(
+                    _words[stars],
+                    key: const ValueKey('rating-word'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                saved == null
+                    ? 'How was ${widget.order.riderName}?'
+                    : 'Delivered by ${widget.order.riderName}',
+                style: const TextStyle(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  for (var i = 1; i <= 5; i++)
+                    IconButton(
+                      key: ValueKey('rate-star-$i'),
+                      tooltip: '$i star${i == 1 ? '' : 's'}',
+                      visualDensity: VisualDensity.compact,
+                      // Locked once the rating has been sent.
+                      onPressed: saved != null || _saving
+                          ? null
+                          : () => setState(() => _picked = i),
+                      icon: Icon(
+                        i <= stars
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded,
+                        size: 34,
+                        color: i <= stars
+                            ? const Color(0xFFE8A200)
+                            : AppColors.textMuted,
+                      ),
                     ),
                 ],
               ),
-              const SizedBox(width: 12),
-              Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: Text(
-                  step.label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight:
-                        i == currentIndex ? FontWeight.w800 : FontWeight.w500,
-                    color: i <= currentIndex
-                        ? AppColors.textDark
-                        : AppColors.textMuted,
+              if (saved == null) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: const ValueKey('submit-rating-button'),
+                    onPressed: _picked == 0 || _saving ? null : _submit,
+                    child: Text(_saving ? 'Sending…' : 'Submit rating'),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
-      ],
+        ),
+      ),
     );
   }
 }

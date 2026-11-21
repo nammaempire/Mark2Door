@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../auth/application/auth_providers.dart';
+
 /// Bottom-navigation scaffold; each tab keeps its own navigation state.
-class HomeShell extends StatelessWidget {
+class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.shell});
 
   final StatefulNavigationShell shell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Signs this phone up for order notifications once the shopper is in.
+    ref.watch(pushRegistrationProvider);
     final bar = NavigationBar(
       selectedIndex: shell.currentIndex,
       onDestinationSelected: (index) => shell.goBranch(

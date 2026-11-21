@@ -135,6 +135,26 @@ class FakeRewardsRepository implements RewardsRepository {
     _changes.add(null);
   }
 
+  /// Puts [amountPaise] back, as the server does for a cancelled order.
+  void refund(String uid, int amountPaise, String note) {
+    final wallet = _wallets[uid] ?? Wallet.empty;
+    _wallets[uid] = Wallet(
+      balancePaise: wallet.balancePaise + amountPaise,
+      successfulInvites: wallet.successfulInvites,
+      rewardedMilestones: wallet.rewardedMilestones,
+    );
+    (_history[uid] ??= []).insert(
+      0,
+      WalletEntry(
+        amountPaise: amountPaise,
+        type: 'order_refund',
+        note: note,
+        createdAt: DateTime.now(),
+      ),
+    );
+    _changes.add(null);
+  }
+
   /// Plays the admin's part for tests: records that [inviteeUid]'s first
   /// order was delivered and pays any reward the inviter has now earned.
   void completeFirstOrder(String inviteeUid) {

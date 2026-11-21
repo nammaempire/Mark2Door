@@ -98,9 +98,11 @@ Future<void> _placeCodOrder(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('method-cod')));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('place-order-button')));
-  // The result page keeps animating, so advance by time.
-  await tester.pump(const Duration(seconds: 1));
-  await tester.pump(const Duration(seconds: 2));
+  // The result page keeps animating, so advance by time. Placing an order
+  // waits on several steps in turn, and each needs its own pump.
+  for (var i = 0; i < 4; i++) {
+    await tester.pump(const Duration(seconds: 1));
+  }
   expect(find.byType(OrderResultScreen), findsOneWidget);
 }
 
@@ -263,13 +265,37 @@ void main() {
       expect(find.text('Tomato Local'), findsOneWidget);
     });
 
-    test('similarProducts puts the same category first and skips sold out',
-        () {
+    test('similarProducts puts the same category first and skips sold out', () {
       const all = [
-        Product(id: 'a', name: 'A', categoryId: 'x', unit: '', pricePaise: 1, mrpPaise: 1),
-        Product(id: 'b', name: 'B', categoryId: 'y', unit: '', pricePaise: 1, mrpPaise: 1),
-        Product(id: 'c', name: 'C', categoryId: 'x', unit: '', pricePaise: 1, mrpPaise: 1),
-        Product(id: 'd', name: 'D', categoryId: 'x', unit: '', pricePaise: 1, mrpPaise: 1, inStock: false),
+        Product(
+            id: 'a',
+            name: 'A',
+            categoryId: 'x',
+            unit: '',
+            pricePaise: 1,
+            mrpPaise: 1),
+        Product(
+            id: 'b',
+            name: 'B',
+            categoryId: 'y',
+            unit: '',
+            pricePaise: 1,
+            mrpPaise: 1),
+        Product(
+            id: 'c',
+            name: 'C',
+            categoryId: 'x',
+            unit: '',
+            pricePaise: 1,
+            mrpPaise: 1),
+        Product(
+            id: 'd',
+            name: 'D',
+            categoryId: 'x',
+            unit: '',
+            pricePaise: 1,
+            mrpPaise: 1,
+            inStock: false),
       ];
       expect(
         similarProducts(all, [all[0]]).map((p) => p.id),
@@ -576,8 +602,8 @@ void main() {
 
   group('invite and earn', () {
     const me = AppUser(uid: 'demo-+919876543210', phone: '+919876543210');
-    AppUser friend(int n) =>
-        AppUser(uid: 'friend-$n', phone: '+9198000000${n.toString().padLeft(2, '0')}');
+    AppUser friend(int n) => AppUser(
+        uid: 'friend-$n', phone: '+9198000000${n.toString().padLeft(2, '0')}');
 
     test('rewards are paid at 1, 3, 6, 10 and 15 friends', () {
       expect(ReferralRules.maxRewardPaise, 12500);
@@ -666,15 +692,20 @@ void main() {
         '12, 4th Cross',
       );
 
-      final walletSwitch = find.byKey(const ValueKey('use-wallet-switch'));
+      final walletBox = find.byKey(const ValueKey('use-wallet-checkbox'));
       await tester.scrollUntilVisible(
-        walletSwitch,
+        walletBox,
         200,
         scrollable: find.byType(Scrollable).first,
       );
+      // The wallet is used only once the shopper ticks the box.
       expect(find.text('₹25 available'), findsOneWidget);
+      expect(find.text('- ₹25'), findsNothing);
+      await tester.tap(walletBox);
+      await tester.pumpAndSettle();
+      expect(find.text('₹25 will be used from ₹25'), findsOneWidget);
       await tester.scrollUntilVisible(
-        find.text('m2d wallet'),
+        find.text('- ₹25'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
@@ -682,6 +713,12 @@ void main() {
       // 42 + 30 delivery = 72, less 25 from the wallet.
       expect(find.textContaining('₹47'), findsWidgets);
 
+      // Back up to the payment methods, which scrolled out of the list.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('method-cod')),
+        -200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await _placeCodOrder(tester);
       final container = ProviderScope.containerOf(
         tester.element(find.byType(OrderResultScreen)),
@@ -723,9 +760,8 @@ void main() {
       expect(find.byKey(const ValueKey('invite-code')), findsOneWidget);
       expect(find.text('0 of 15 friends ordered'), findsOneWidget);
       // Own code is refused in the "code from a friend" box.
-      final code = tester
-          .widget<Text>(find.byKey(const ValueKey('invite-code')))
-          .data!;
+      final code =
+          tester.widget<Text>(find.byKey(const ValueKey('invite-code'))).data!;
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('friend-code-field')),
         300,

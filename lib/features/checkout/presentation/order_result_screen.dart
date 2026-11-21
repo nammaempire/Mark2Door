@@ -6,6 +6,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../orders/application/order_providers.dart';
+import '../../orders/presentation/live_order_card.dart';
 import 'result_animation.dart';
 
 /// One screen, four states: order placed, payment failed, payment pending
@@ -45,25 +46,35 @@ class OrderResultScreen extends ConsumerWidget {
                   kind: outcome,
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  view.title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textDark,
+                if (outcome == ResultKind.success && order != null)
+                  // The live card says "Order placed" and keeps showing
+                  // where the order is while this page stays open.
+                  LiveOrderCard(
+                    key: const ValueKey('result-status-card'),
+                    order: order,
+                    showOrderId: false,
+                  )
+                else ...[
+                  Text(
+                    view.title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textDark,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  view.message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: AppColors.textMuted,
+                  const SizedBox(height: 8),
+                  Text(
+                    view.message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: AppColors.textMuted,
+                    ),
                   ),
-                ),
+                ],
                 if (order != null) ...[
                   const SizedBox(height: 24),
                   Container(

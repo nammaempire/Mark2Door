@@ -8,6 +8,8 @@ class Address {
     required this.line1,
     required this.landmark,
     required this.pincode,
+    this.lat,
+    this.lng,
   });
 
   final String name;
@@ -15,6 +17,14 @@ class Address {
   final String line1;
   final String landmark;
   final String pincode;
+
+  /// The exact spot the shopper pinned for this address with "Use my
+  /// current location"; null when they did not. The delivery partner's
+  /// map goes to this pin instead of guessing from the typed address.
+  final double? lat;
+  final double? lng;
+
+  bool get hasPin => lat != null && lng != null;
 
   String get singleLine => [
         line1,
@@ -28,8 +38,12 @@ class Address {
         'line1': line1,
         'landmark': landmark,
         'pincode': pincode,
+        if (hasPin) 'lat': lat,
+        if (hasPin) 'lng': lng,
       };
 
+  /// Two addresses are the same when their text matches; the pin is not
+  /// compared, so pinning an address does not save it a second time.
   @override
   bool operator ==(Object other) =>
       other is Address &&
@@ -48,5 +62,7 @@ class Address {
         line1: map['line1'] as String? ?? '',
         landmark: map['landmark'] as String? ?? '',
         pincode: map['pincode'] as String? ?? '',
+        lat: (map['lat'] as num?)?.toDouble(),
+        lng: (map['lng'] as num?)?.toDouble(),
       );
 }

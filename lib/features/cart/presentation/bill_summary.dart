@@ -17,6 +17,8 @@ class OrderSummaryCard extends StatelessWidget {
     this.handlingFeePaise = 0,
     this.rainFeePaise = 0,
     this.walletAppliedPaise = 0,
+    this.couponCode,
+    this.couponDiscountPaise = 0,
     this.totalLabel = 'To pay',
     this.savingsVerb = 'You save',
   });
@@ -33,7 +35,11 @@ class OrderSummaryCard extends StatelessWidget {
   /// Paid from the m2d wallet; shown as a deduction when above zero.
   final int walletAppliedPaise;
 
-  /// Order value before the wallet is taken off.
+  /// Coupon used and what it takes off; the row shows when above zero.
+  final String? couponCode;
+  final int couponDiscountPaise;
+
+  /// Order value after the coupon and before the wallet is taken off.
   final int totalPaise;
   final String totalLabel;
 
@@ -67,6 +73,17 @@ class OrderSummaryCard extends StatelessWidget {
             if (rainFeePaise > 0) ...[
               const SizedBox(height: 10),
               _row('Rain charge', formatPaise(rainFeePaise)),
+            ],
+            if (couponDiscountPaise > 0) ...[
+              const SizedBox(height: 10),
+              KeyedSubtree(
+                key: const ValueKey('coupon-row'),
+                child: _row(
+                  couponCode == null ? 'Coupon' : 'Coupon ($couponCode)',
+                  '- ${formatPaise(couponDiscountPaise)}',
+                  valueColor: AppColors.success,
+                ),
+              ),
             ],
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),

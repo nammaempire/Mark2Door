@@ -212,6 +212,15 @@ class QtyStepper extends ConsumerWidget {
     final palette = context.palette;
     final radius = BorderRadius.circular(height / 3.2);
 
+    // Tells the shopper when stock or the per-order limit stops them.
+    void add() {
+      final message = cart.add(product);
+      if (message == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    }
+
     if (!product.inStock) {
       return Container(
         height: height,
@@ -280,7 +289,7 @@ class QtyStepper extends ConsumerWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             key: ValueKey('$keyPrefix-${product.id}'),
-            onTap: () => cart.add(product),
+            onTap: add,
             child: SizedBox(
               height: height,
               child: Center(
@@ -334,7 +343,7 @@ class QtyStepper extends ConsumerWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              button(Icons.add_rounded, 'Add one', () => cart.add(product)),
+              button(Icons.add_rounded, 'Add one', add),
             ],
           ),
         ),

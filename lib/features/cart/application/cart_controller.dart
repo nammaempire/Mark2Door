@@ -26,10 +26,27 @@ class CartController extends Notifier<Cart> {
     }
   }
 
-  void add(Product product) => setQuantity(
-        product,
-        state.quantityOf(product.id) + 1,
-      );
+  /// Adds one. Returns a message for the shopper when no more can be
+  /// added (stock has run out, or the per-order limit is reached), and
+  /// null when the item was added.
+  String? add(Product product) {
+    final have = state.quantityOf(product.id);
+    final limit = product.maxPerOrder(AppConfig.maxQtyPerItem);
+    if (have >= limit) return limitMessage(product);
+    setQuantity(product, have + 1);
+    return null;
+  }
+
+  /// Why no more of [product] can be added.
+  static String limitMessage(Product product) {
+    final left = product.stockQty;
+    if (!product.inStock) return '${product.name} is out of stock.';
+    if (left != null && left <= AppConfig.maxQtyPerItem) {
+      return 'Only $left left in stock. You cannot add more.';
+    }
+    return 'You can add up to ${AppConfig.maxQtyPerItem} of one item '
+        'per order.';
+  }
 
   void remove(Product product) => setQuantity(
         product,
@@ -38,7 +55,8 @@ class CartController extends Notifier<Cart> {
 
   void setQuantity(Product product, int quantity) {
     if (!product.inStock) return;
-    final clamped = quantity.clamp(0, AppConfig.maxQtyPerItem);
+    final clamped =
+        quantity.clamp(0, product.maxPerOrder(AppConfig.maxQtyPerItem));
     final next = Map<String, CartItem>.of(state.items);
     if (clamped == 0) {
       next.remove(product.id);

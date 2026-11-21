@@ -18,7 +18,7 @@ class FakeCatalogRepository implements CatalogRepository {
     Product(id: 'p01', emoji: '🍌', name: 'Banana Robusta', categoryId: 'fruits', unit: '6 pcs', pricePaise: 4200, mrpPaise: 5000, description: 'Fresh, naturally ripened Robusta bananas sourced daily.'),
     Product(id: 'p02', emoji: '🍅', name: 'Tomato Local', categoryId: 'fruits', unit: '500 g', pricePaise: 1800, mrpPaise: 2400, description: 'Firm, juicy local tomatoes. Great for curries and salads.'),
     Product(id: 'p03', emoji: '🧅', name: 'Onion', categoryId: 'fruits', unit: '1 kg', pricePaise: 3500, mrpPaise: 4500, description: 'Medium-size red onions, hand sorted.'),
-    Product(id: 'p04', emoji: '🍎', name: 'Apple Shimla', categoryId: 'fruits', unit: '4 pcs', pricePaise: 12900, mrpPaise: 16000, description: 'Crisp and sweet Shimla apples.'),
+    Product(id: 'p04', emoji: '🍎', name: 'Apple Shimla', categoryId: 'fruits', unit: '4 pcs', pricePaise: 12900, mrpPaise: 16000, subtitle: 'Hand-picked from Himachal orchards', description: 'Crisp and sweet Shimla apples.', stockQty: 8),
     Product(id: 'p05', emoji: '🥛', name: 'Toned Milk', categoryId: 'dairy', unit: '500 ml', pricePaise: 2700, mrpPaise: 2700, description: 'Pasteurised toned milk pouch.'),
     Product(id: 'p06', emoji: '🥣', name: 'Fresh Curd', categoryId: 'dairy', unit: '400 g', pricePaise: 3500, mrpPaise: 4000, description: 'Thick, creamy curd set fresh.'),
     Product(id: 'p07', emoji: '🥚', name: 'Farm Eggs', categoryId: 'dairy', unit: '6 pcs', pricePaise: 4800, mrpPaise: 5400, description: 'Farm fresh white eggs.'),

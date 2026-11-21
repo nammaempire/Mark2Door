@@ -15,33 +15,52 @@ class FirestoreOrderRepository implements OrderRepository {
       _db.collection('orders');
 
   @override
-  Future<Order> create(Order draft) async {
+  Future<Order> create(Order draft, {bool recordCouponUse = false}) async {
     final doc = _col.doc();
     final order = draft.copyWith(id: doc.id);
-    if (order.walletAppliedPaise <= 0) {
-      await doc.set(order.toMap());
-      return order;
+    final at = order.createdAt.millisecondsSinceEpoch;
+    // Everything below happens together or not at all.
+    final batch = _db.batch()..set(doc, order.toMap());
+    if (order.walletAppliedPaise > 0) {
+      // The security rules accept the order only if the same batch takes
+      // exactly `walletAppliedPaise` out of the shopper's wallet.
+      final wallet = _db.collection('wallets').doc(order.userId);
+      batch
+        ..update(wallet, {
+          'balancePaise': FieldValue.increment(-order.walletAppliedPaise),
+          'updatedAt': at,
+        })
+        ..set(wallet.collection('transactions').doc(doc.id), {
+          'amountPaise': -order.walletAppliedPaise,
+          'type': 'order_payment',
+          'note': 'Paid for order ${order.displayId}',
+          'orderId': doc.id,
+          'createdAt': at,
+        });
     }
-    // The order and the wallet change together or not at all. The security
-    // rules accept the order only if the same batch takes exactly
-    // `walletAppliedPaise` out of the shopper's wallet.
-    final wallet = _db.collection('wallets').doc(order.userId);
-    final batch = _db.batch()
-      ..set(doc, order.toMap())
-      ..update(wallet, {
-        'balancePaise': FieldValue.increment(-order.walletAppliedPaise),
-        'updatedAt': order.createdAt.millisecondsSinceEpoch,
-      })
-      ..set(wallet.collection('transactions').doc(doc.id), {
-        'amountPaise': -order.walletAppliedPaise,
-        'type': 'order_payment',
-        'note': 'Paid for order ${order.displayId}',
-        'orderId': doc.id,
-        'createdAt': order.createdAt.millisecondsSinceEpoch,
-      });
+    final code = order.couponCode;
+    if (recordCouponUse && code != null) {
+      // The rules refuse a second "uses" document for the same customer,
+      // which makes the whole order fail if the code was already used.
+      batch.set(
+        _db
+            .collection('coupons')
+            .doc(code)
+            .collection('uses')
+            .doc(order.userId),
+        {'orderId': doc.id, 'usedAt': at},
+      );
+    }
     await batch.commit();
     return order;
   }
+
+  @override
+  Future<void> cancel(String orderId) => _col.doc(orderId).update({
+        'status': OrderStatus.cancelled.name,
+        'cancelledBy': 'customer',
+        'cancelledAt': DateTime.now().millisecondsSinceEpoch,
+      });
 
   @override
   Future<void> updatePayment(
@@ -54,8 +73,18 @@ class FirestoreOrderRepository implements OrderRepository {
       'paymentStatus': paymentStatus.name,
       if (status != null) 'status': status.name,
       if (paymentId != null) 'paymentId': paymentId,
+      // Lets the server tell the shopper their payment is still pending.
+      if (paymentStatus == PaymentStatus.pending)
+        'paymentPendingAt': DateTime.now().millisecondsSinceEpoch,
     });
   }
+
+  @override
+  Future<void> rateDelivery(String orderId, int stars) =>
+      _col.doc(orderId).update({
+        'riderRating': stars,
+        'riderRatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
 
   @override
   Stream<List<Order>> watchOrders(String userId) {

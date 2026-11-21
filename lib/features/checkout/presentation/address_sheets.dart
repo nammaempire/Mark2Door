@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/env.dart';
+import '../../../core/location/location_service.dart';
+import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../auth/application/auth_providers.dart';
+import '../../profile/application/customer_name.dart';
 import '../../service_area/application/pincode_controller.dart';
 import '../application/address_book.dart';
 import '../domain/address.dart';
@@ -160,6 +163,7 @@ class _AddressFormSheetState extends ConsumerState<_AddressFormSheet> {
       widget.initial,
       phone: ref.read(currentUserProvider)?.phone ?? '',
       pincode: ref.read(pincodeProvider) ?? '',
+      name: ref.read(customerNameProvider),
     );
   }
 
@@ -228,26 +232,35 @@ class AddressFields {
     String line1 = '',
     String landmark = '',
     String pincode = '',
-  })  : name = TextEditingController(text: name),
+    MapPin? pin,
+  })  : pin = ValueNotifier(pin),
+        name = TextEditingController(text: name),
         phone = TextEditingController(text: phone),
         line1 = TextEditingController(text: line1),
         landmark = TextEditingController(text: landmark),
         pincode = TextEditingController(text: pincode);
 
-  /// Starts from [address], or from the shopper's login [phone] and
-  /// current [pincode] for a new one.
+  /// Starts from [address], or from the shopper's [name], login [phone]
+  /// and current [pincode] for a new one.
   factory AddressFields.from(
     Address? address, {
     required String phone,
     required String pincode,
+    String name = '',
   }) =>
       AddressFields(
-        name: address?.name ?? '',
+        name: address?.name ?? name,
         phone: address?.phone ?? phone.replaceFirst(AppConfig.countryCode, ''),
         line1: address?.line1 ?? '',
         landmark: address?.landmark ?? '',
         pincode: address?.pincode ?? pincode,
+        pin: address != null && address.hasPin
+            ? (lat: address.lat!, lng: address.lng!)
+            : null,
       );
+
+  /// The spot pinned with "Use my current location"; null until pinned.
+  final ValueNotifier<MapPin?> pin;
 
   final TextEditingController name;
   final TextEditingController phone;
@@ -261,9 +274,12 @@ class AddressFields {
         line1: line1.text.trim(),
         landmark: landmark.text.trim(),
         pincode: pincodeOverride ?? pincode.text.trim(),
+        lat: pin.value?.lat,
+        lng: pin.value?.lng,
       );
 
   void dispose() {
+    pin.dispose();
     name.dispose();
     phone.dispose();
     line1.dispose();
@@ -324,6 +340,10 @@ class AddressFormFields extends StatelessWidget {
           label: 'Landmark (optional)',
           capitalization: TextCapitalization.sentences,
         ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _PinLocation(pin: fields.pin, keyPrefix: keyPrefix),
+        ),
         if (showPincode)
           _field(
             key: 'address-pincode-field',
@@ -363,6 +383,110 @@ class AddressFormFields extends StatelessWidget {
         autofillHints: autofill == null ? null : [autofill],
         decoration: InputDecoration(labelText: label),
       ),
+    );
+  }
+}
+
+/// "Use my current location": saves where the phone is as the exact spot
+/// for this address, so the delivery partner's map goes to the door and
+/// not to a guess from the typed address. Optional.
+class _PinLocation extends ConsumerStatefulWidget {
+  const _PinLocation({required this.pin, required this.keyPrefix});
+
+  final ValueNotifier<MapPin?> pin;
+  final String keyPrefix;
+
+  @override
+  ConsumerState<_PinLocation> createState() => _PinLocationState();
+}
+
+class _PinLocationState extends ConsumerState<_PinLocation> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _pin() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final at = await ref.read(locationServiceProvider).current();
+      if (!mounted) return;
+      widget.pin.value = at;
+    } on LocationFailure catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<MapPin?>(
+      valueListenable: widget.pin,
+      builder: (context, pin, _) {
+        if (pin != null) {
+          return Container(
+            key: ValueKey('${widget.keyPrefix}location-pinned'),
+            padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+            decoration: BoxDecoration(
+              color: AppColors.successSoft,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.location_on_rounded, color: AppColors.success),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Location pinned for the delivery partner',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.success,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  key: ValueKey('${widget.keyPrefix}remove-pin-button'),
+                  onPressed: () => widget.pin.value = null,
+                  child: const Text('Remove'),
+                ),
+              ],
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OutlinedButton.icon(
+              key: ValueKey('${widget.keyPrefix}pin-location-button'),
+              onPressed: _busy ? null : _pin,
+              icon: _busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location_rounded),
+              label: Text(
+                _busy ? 'Finding your location' : 'Use my current location',
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _error ??
+                  'Optional. Tap while you are at this address, so the '
+                      'delivery partner is guided to the exact spot.',
+              style: TextStyle(
+                fontSize: 12,
+                color: _error == null ? AppColors.textMuted : AppColors.danger,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -9,6 +9,7 @@ import '../../rewards/application/rewards_providers.dart';
 import '../../store/application/store_providers.dart';
 import '../data/payment_gateway.dart';
 import '../domain/address.dart';
+import '../domain/coupon.dart';
 import 'address_book.dart';
 
 @immutable
@@ -41,11 +42,12 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
     required Address address,
     required PaymentMethod method,
     bool useWallet = false,
+    Coupon? coupon,
   }) async {
     if (state.isLoading) return null; // guard against double taps
     state = const AsyncLoading();
     try {
-      final result = await _placeOrder(address, method, useWallet);
+      final result = await _placeOrder(address, method, useWallet, coupon);
       state = const AsyncData(null);
       return result;
     } on CheckoutFailure catch (e, st) {
@@ -64,6 +66,7 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
     Address address,
     PaymentMethod method,
     bool useWallet,
+    Coupon? coupon,
   ) async {
     final user = ref.read(currentUserProvider);
     final cart = ref.read(cartProvider);
@@ -79,10 +82,45 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
       throw CheckoutFailure("We don't deliver to ${address.pincode} yet.");
     }
 
+    // Stock may have sold since the items went into the cart.
+    final catalog = ref.read(catalogRepositoryProvider);
+    for (final line in cart.lines) {
+      final fresh = await catalog.fetchProduct(line.product.id);
+      final name = line.product.name;
+      if (fresh == null || !fresh.inStock) {
+        throw CheckoutFailure(
+          '$name is out of stock. Remove it from your cart to continue.',
+        );
+      }
+      final left = fresh.stockQty;
+      if (left != null && line.quantity > left) {
+        throw CheckoutFailure(
+          'Only $left $name left in stock. Reduce the quantity in your '
+          'cart to continue.',
+        );
+      }
+    }
+
     final orders = ref.read(orderRepositoryProvider);
     final now = DateTime.now();
+
+    // The coupon was checked when it was applied; check again, because the
+    // cart or the coupon may have changed since.
+    var discount = 0;
+    if (coupon != null) {
+      final problem = coupon.problemFor(cart.subtotalPaise, now);
+      if (problem != null) throw CheckoutFailure(problem);
+      if (coupon.oncePerCustomer &&
+          await ref
+              .read(couponRepositoryProvider)
+              .alreadyUsed(coupon.code, user.uid)) {
+        throw const CheckoutFailure('You have already used this coupon.');
+      }
+      discount = coupon.discountFor(cart.subtotalPaise);
+    }
+    final total = cart.totalPaise - discount;
     final walletApplied = useWallet
-        ? walletAmountFor(cart.totalPaise, ref.read(walletBalanceProvider))
+        ? walletAmountFor(total, ref.read(walletBalanceProvider))
         : 0;
     final order = await orders.create(
       Order(
@@ -93,8 +131,10 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
         deliveryFeePaise: cart.deliveryFeePaise,
         handlingFeePaise: cart.handlingFeePaise,
         rainFeePaise: cart.rainFeePaise,
-        totalPaise: cart.totalPaise,
+        totalPaise: total,
         walletAppliedPaise: walletApplied,
+        couponCode: discount > 0 ? coupon!.code : null,
+        couponDiscountPaise: discount,
         address: address,
         paymentMethod: method,
         paymentStatus: PaymentStatus.pending,
@@ -106,6 +146,7 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
           ),
         ),
       ),
+      recordCouponUse: discount > 0 && coupon!.oncePerCustomer,
     );
     ref.read(addressBookProvider.notifier).use(address);
 

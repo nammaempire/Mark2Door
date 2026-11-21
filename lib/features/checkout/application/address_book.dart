@@ -71,7 +71,11 @@ class AddressBookController extends Notifier<AddressBook> {
   void use(Address address) {
     final existing = state.addresses.indexOf(address);
     if (existing >= 0) {
-      _commit(AddressBook(state.addresses, existing));
+      // Same address as one already saved: keep one copy, and take the
+      // map pin from the newer one if it has one.
+      final next = [...state.addresses];
+      if (address.hasPin) next[existing] = address;
+      _commit(AddressBook(List.unmodifiable(next), existing));
     } else {
       _commit(
         AddressBook(

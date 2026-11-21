@@ -14,6 +14,8 @@ import '../../rewards/application/rewards_providers.dart';
 import '../../rewards/domain/rewards.dart';
 import '../../service_area/application/pincode_controller.dart';
 import '../../support/data/content_repository.dart';
+import '../application/customer_name.dart';
+import 'delete_account.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -37,6 +39,11 @@ class ProfileScreen extends ConsumerWidget {
       ),
     );
     if (confirmed ?? false) {
+      // Stop order notifications to this phone; never blocks logging out.
+      final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
+      try {
+        await ref.read(pushServiceProvider).unregister(uid);
+      } catch (_) {}
       // The router redirect sends the user to login once the session ends.
       await ref.read(authRepositoryProvider).signOut();
     }
@@ -47,6 +54,7 @@ class ProfileScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final pincode = ref.watch(pincodeProvider);
     final address = ref.watch(savedAddressProvider);
+    final customerName = ref.watch(customerNameProvider);
     final walletBalance = ref.watch(walletBalanceProvider);
 
     return Scaffold(
@@ -64,9 +72,12 @@ class ProfileScreen extends ConsumerWidget {
                 child: Icon(Icons.person_rounded, color: AppColors.primary),
               ),
               title: Text(
-                address?.name.isNotEmpty ?? false
-                    ? address!.name
-                    : 'mart2door shopper',
+                customerName.isNotEmpty
+                    ? customerName
+                    : address?.name.isNotEmpty ?? false
+                        ? address!.name
+                        : 'mart2door shopper',
+                key: const ValueKey('profile-name'),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: Text(user?.phone ?? ''),
@@ -179,6 +190,17 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
               onTap: () => _confirmLogout(context, ref),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Center(
+            child: TextButton(
+              key: const ValueKey('delete-account-button'),
+              onPressed: () => deleteCustomerAccount(context),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.textMuted,
+              ),
+              child: const Text('Delete account'),
             ),
           ),
           if (!Env.useFirebase) ...[

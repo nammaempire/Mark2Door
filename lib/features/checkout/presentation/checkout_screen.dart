@@ -13,10 +13,13 @@ import '../../cart/application/cart_controller.dart';
 import '../../cart/presentation/bill_summary.dart';
 import '../../orders/domain/order.dart';
 import '../../rewards/application/rewards_providers.dart';
+import '../../profile/application/customer_name.dart';
 import '../../service_area/application/pincode_controller.dart';
 import '../application/address_book.dart';
 import '../application/checkout_controller.dart';
+import '../../../core/providers.dart';
 import '../domain/address.dart';
+import '../domain/coupon.dart';
 import 'address_sheets.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
@@ -33,8 +36,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   late final AddressFields _fields;
   PaymentMethod _method = PaymentMethod.online;
 
-  /// On by default whenever there is wallet money to use.
-  bool _useWallet = true;
+  /// Off until the shopper ticks "Use m2d wallet".
+  bool _useWallet = false;
+
+  final _couponController = TextEditingController();
+  Coupon? _coupon;
+  String? _couponError;
+  bool _applyingCoupon = false;
 
   @override
   void initState() {
@@ -43,14 +51,63 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       null,
       phone: ref.read(currentUserProvider)?.phone ?? '',
       pincode: ref.read(pincodeProvider) ?? '',
+      name: ref.read(customerNameProvider),
     );
   }
 
   @override
   void dispose() {
     _fields.dispose();
+    _couponController.dispose();
     super.dispose();
   }
+
+  Future<void> _applyCoupon() async {
+    FocusScope.of(context).unfocus();
+    final code = Coupon.normalise(_couponController.text);
+    if (code.isEmpty) {
+      setState(() => _couponError = 'Enter a coupon code.');
+      return;
+    }
+    setState(() {
+      _applyingCoupon = true;
+      _couponError = null;
+    });
+    String? error;
+    Coupon? coupon;
+    try {
+      final repo = ref.read(couponRepositoryProvider);
+      coupon = await repo.find(code);
+      final uid = ref.read(currentUserProvider)?.uid ?? '';
+      if (coupon == null) {
+        error = 'This coupon code is not valid.';
+      } else {
+        error = coupon.problemFor(
+          ref.read(cartProvider).subtotalPaise,
+          DateTime.now(),
+        );
+        if (error == null &&
+            coupon.oncePerCustomer &&
+            await repo.alreadyUsed(code, uid)) {
+          error = 'You have already used this coupon.';
+        }
+      }
+    } catch (_) {
+      error = 'Could not check this coupon. Try again.';
+    }
+    if (!mounted) return;
+    setState(() {
+      _applyingCoupon = false;
+      _couponError = error;
+      _coupon = error == null ? coupon : null;
+    });
+  }
+
+  void _removeCoupon() => setState(() {
+        _coupon = null;
+        _couponError = null;
+        _couponController.clear();
+      });
 
   Future<void> _placeOrder() async {
     FocusScope.of(context).unfocus();
@@ -64,7 +121,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
     final result = await ref
         .read(checkoutControllerProvider.notifier)
-        .placeOrder(address: address, method: _method, useWallet: _useWallet);
+        .placeOrder(
+          address: address,
+          method: _method,
+          useWallet: _useWallet,
+          coupon: _coupon,
+        );
     if (!mounted || result == null) return;
     context.go(Routes.orderResult(result.orderId, result.outcome));
   }
@@ -75,10 +137,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final pincode = ref.watch(pincodeProvider) ?? '';
     final saved = ref.watch(addressBookProvider).selected;
     final walletBalance = ref.watch(walletBalanceProvider);
-    final walletApplied = _useWallet
-        ? walletAmountFor(cart.totalPaise, walletBalance)
-        : 0;
-    final payable = cart.totalPaise - walletApplied;
+    // An applied coupon stops counting if the cart drops below its minimum.
+    final couponProblem =
+        _coupon?.problemFor(cart.subtotalPaise, DateTime.now());
+    final discount = _coupon == null || couponProblem != null
+        ? 0
+        : _coupon!.discountFor(cart.subtotalPaise);
+    final total = cart.totalPaise - discount;
+    final walletApplied =
+        _useWallet ? walletAmountFor(total, walletBalance) : 0;
+    final payable = total - walletApplied;
     final placing = ref.watch(checkoutControllerProvider).isLoading;
 
     ref.listen(checkoutControllerProvider, (_, next) {
@@ -157,24 +225,39 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         'test sheet where you pick the result.',
                       ),
                     ],
+                    const SectionLabel('Apply coupon'),
+                    _CouponCard(
+                      controller: _couponController,
+                      applied: _coupon,
+                      discountPaise: discount,
+                      error: _couponError ?? couponProblem,
+                      busy: _applyingCoupon,
+                      onApply: _applyCoupon,
+                      onRemove: _removeCoupon,
+                    ),
                     if (walletBalance > 0) ...[
-                      const SizedBox(height: 12),
+                      const SectionLabel('m2d wallet'),
                       Card(
-                        child: SwitchListTile(
-                          key: const ValueKey('use-wallet-switch'),
-                          secondary: const Icon(
-                            Icons.account_balance_wallet_rounded,
-                            color: AppColors.primary,
-                          ),
+                        child: CheckboxListTile(
+                          key: const ValueKey('use-wallet-checkbox'),
+                          controlAffinity: ListTileControlAffinity.leading,
                           title: const Text(
                             'Use m2d wallet',
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                            '${formatPaise(walletBalance)} available',
+                            _useWallet
+                                ? '${formatPaise(walletApplied)} will be used '
+                                    'from ${formatPaise(walletBalance)}'
+                                : '${formatPaise(walletBalance)} available',
+                          ),
+                          secondary: const Icon(
+                            Icons.account_balance_wallet_rounded,
+                            color: AppColors.primary,
                           ),
                           value: _useWallet,
-                          onChanged: (v) => setState(() => _useWallet = v),
+                          onChanged: (v) =>
+                              setState(() => _useWallet = v ?? false),
                         ),
                       ),
                     ],
@@ -186,7 +269,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       handlingFeePaise: cart.handlingFeePaise,
                       rainFeePaise: cart.rainFeePaise,
                       walletAppliedPaise: walletApplied,
-                      totalPaise: cart.totalPaise,
+                      couponCode: _coupon?.code,
+                      couponDiscountPaise: discount,
+                      totalPaise: total,
                     ),
                   ],
                 ),
@@ -288,6 +373,96 @@ class _SavedAddressCard extends StatelessWidget {
               key: const ValueKey('change-address-button'),
               onPressed: () => showAddressPicker(context),
               child: const Text('Change'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Apply coupon": a code field with an Apply button, which turns into a
+/// green confirmation once a coupon is in use.
+class _CouponCard extends StatelessWidget {
+  const _CouponCard({
+    required this.controller,
+    required this.applied,
+    required this.discountPaise,
+    required this.error,
+    required this.busy,
+    required this.onApply,
+    required this.onRemove,
+  });
+
+  final TextEditingController controller;
+  final Coupon? applied;
+  final int discountPaise;
+  final String? error;
+  final bool busy;
+  final VoidCallback onApply;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final coupon = applied;
+    if (coupon != null) {
+      final counting = discountPaise > 0;
+      return Card(
+        key: const ValueKey('coupon-applied'),
+        child: ListTile(
+          leading: Icon(
+            counting ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+            color: counting ? AppColors.success : AppColors.warning,
+          ),
+          title: Text(
+            counting
+                ? '${coupon.code} applied'
+                : '${coupon.code} is not being used',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            counting
+                ? 'You save ${formatPaise(discountPaise)} (${coupon.label})'
+                : error ?? '',
+          ),
+          trailing: TextButton(
+            key: const ValueKey('remove-coupon-button'),
+            onPressed: onRemove,
+            child: const Text('Remove'),
+          ),
+        ),
+      );
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                key: const ValueKey('coupon-field'),
+                controller: controller,
+                enabled: !busy,
+                textCapitalization: TextCapitalization.characters,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => onApply(),
+                decoration: InputDecoration(
+                  hintText: 'Enter coupon code',
+                  prefixIcon: const Icon(Icons.local_offer_outlined),
+                  errorText: error,
+                  errorMaxLines: 2,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: TextButton(
+                key: const ValueKey('apply-coupon-button'),
+                onPressed: busy ? null : onApply,
+                child: Text(busy ? 'Checking' : 'Apply'),
+              ),
             ),
           ],
         ),

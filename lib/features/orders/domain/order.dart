@@ -118,10 +118,14 @@ class Order {
     this.handlingFeePaise = 0,
     this.rainFeePaise = 0,
     this.walletAppliedPaise = 0,
+    this.couponCode,
+    this.couponDiscountPaise = 0,
     this.etaAt,
     this.paymentId,
     this.riderName,
     this.riderPhone,
+    this.riderRating,
+    this.cancelledBy,
   });
 
   final String id;
@@ -134,8 +138,13 @@ class Order {
   final int handlingFeePaise;
   final int rainFeePaise;
 
-  /// Full value of the order: items plus every fee.
+  /// Value of the order: items plus every fee, less any coupon discount.
   final int totalPaise;
+
+  /// Coupon used on this order, and what it took off; null and 0 when no
+  /// coupon was used.
+  final String? couponCode;
+  final int couponDiscountPaise;
 
   /// Part of [totalPaise] paid from the shopper's m2d wallet.
   final int walletAppliedPaise;
@@ -153,6 +162,29 @@ class Order {
   /// Delivery partner assigned from the admin web; null until assigned.
   final String? riderName;
   final String? riderPhone;
+
+  /// Stars (1 to 5) the shopper gave this delivery; null until rated.
+  final int? riderRating;
+
+  /// "customer" when the shopper cancelled it themselves; null otherwise.
+  final String? cancelledBy;
+
+  /// The shopper can cancel until the delivery partner has picked the
+  /// order up from the store.
+  bool get canCancel =>
+      status == OrderStatus.placed || status == OrderStatus.accepted;
+
+  /// Still on its way: shown as a live card on the home page.
+  bool get isActive =>
+      status != OrderStatus.delivered &&
+      status != OrderStatus.cancelled &&
+      paymentStatus != PaymentStatus.failed;
+
+  /// A delivered order whose delivery partner has not been rated yet.
+  bool get canRateDelivery =>
+      status == OrderStatus.delivered &&
+      riderName != null &&
+      riderRating == null;
 
   /// Short code shown to the customer and the delivery partner.
   String get displayId =>
@@ -218,6 +250,9 @@ class Order {
     OrderStatus? status,
     String? paymentId,
     DateTime? etaAt,
+    String? riderName,
+    int? riderRating,
+    String? cancelledBy,
   }) =>
       Order(
         id: id ?? this.id,
@@ -229,6 +264,8 @@ class Order {
         rainFeePaise: rainFeePaise,
         totalPaise: totalPaise,
         walletAppliedPaise: walletAppliedPaise,
+        couponCode: couponCode,
+        couponDiscountPaise: couponDiscountPaise,
         address: address,
         paymentMethod: paymentMethod,
         paymentStatus: paymentStatus ?? this.paymentStatus,
@@ -236,8 +273,10 @@ class Order {
         createdAt: createdAt,
         etaAt: etaAt ?? this.etaAt,
         paymentId: paymentId ?? this.paymentId,
-        riderName: riderName,
+        riderName: riderName ?? this.riderName,
         riderPhone: riderPhone,
+        riderRating: riderRating ?? this.riderRating,
+        cancelledBy: cancelledBy ?? this.cancelledBy,
       );
 
   Map<String, dynamic> toMap() => {
@@ -249,6 +288,8 @@ class Order {
         'rainFeePaise': rainFeePaise,
         'totalPaise': totalPaise,
         'walletAppliedPaise': walletAppliedPaise,
+        if (couponCode != null) 'couponCode': couponCode,
+        if (couponCode != null) 'couponDiscountPaise': couponDiscountPaise,
         'address': address.toMap(),
         'paymentMethod': paymentMethod.name,
         'paymentStatus': paymentStatus.name,
@@ -270,6 +311,9 @@ class Order {
         rainFeePaise: (map['rainFeePaise'] as num?)?.toInt() ?? 0,
         totalPaise: (map['totalPaise'] as num?)?.toInt() ?? 0,
         walletAppliedPaise: (map['walletAppliedPaise'] as num?)?.toInt() ?? 0,
+        couponCode: map['couponCode'] as String?,
+        couponDiscountPaise:
+            (map['couponDiscountPaise'] as num?)?.toInt() ?? 0,
         address: Address.fromMap(
           Map<String, dynamic>.from((map['address'] as Map?) ?? const {}),
         ),
@@ -297,5 +341,7 @@ class Order {
         paymentId: map['paymentId'] as String?,
         riderName: map['riderName'] as String?,
         riderPhone: map['riderPhone'] as String?,
+        riderRating: (map['riderRating'] as num?)?.toInt(),
+        cancelledBy: map['cancelledBy'] as String?,
       );
 }

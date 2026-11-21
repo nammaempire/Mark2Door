@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mart2door/app.dart';
+import 'package:mart2door/core/providers.dart';
+import 'package:mart2door/core/router/app_router.dart';
 import 'package:mart2door/core/storage/local_store.dart';
+import 'package:mart2door/features/auth/application/auth_providers.dart';
+import 'package:mart2door/features/checkout/domain/address.dart';
+import 'package:mart2door/features/orders/data/fake_order_repository.dart';
+import 'package:mart2door/features/orders/domain/order.dart';
 import 'package:mart2door/features/auth/presentation/login_screen.dart';
 import 'package:mart2door/features/catalog/presentation/home_screen.dart';
 import 'package:mart2door/features/catalog/presentation/product_detail_screen.dart';
@@ -48,8 +54,11 @@ final _homeScroll = find
 /// Result pages keep animating, so they are advanced by time instead of
 /// waiting for animations to stop.
 Future<void> _showResultPage(WidgetTester tester) async {
-  await tester.pump(const Duration(seconds: 1));
-  await tester.pump(const Duration(seconds: 2));
+  // Placing an order waits on several steps in turn (stock check, delivery
+  // area, saving), and each needs its own pump to move on.
+  for (var i = 0; i < 4; i++) {
+    await tester.pump(const Duration(seconds: 1));
+  }
 }
 
 Future<void> _addToCartAndOpenCheckout(WidgetTester tester) async {
@@ -99,7 +108,12 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('pincode-field')), '12');
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
+    expect(find.text('Enter your name'), findsOneWidget);
     expect(find.text('Enter a valid 6-digit pincode'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('customer-name-field')),
+      'Navi',
+    );
 
     // A pincode outside the delivery area is accepted: the shopper lands
     // on home, is told we don't deliver there, and cannot add to the cart.
@@ -135,6 +149,8 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('change-pincode-button')));
     await tester.pumpAndSettle();
+    // The name given earlier is already filled in.
+    expect(find.text('Navi'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey('pincode-field')),
       '560034',
@@ -144,6 +160,14 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.text('Pincode 560034'), findsOneWidget);
     expect(find.byKey(const ValueKey('not-serviceable-banner')), findsNothing);
+
+    // The name shows on the account page.
+    await tester.tap(find.text('Account'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('profile-name'))).data,
+      'Navi',
+    );
   });
 
   testWidgets('returning user skips login and lands on home', (tester) async {
@@ -203,8 +227,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('place-order-button')));
     // The pay button keeps spinning behind the sheet, so settle by time.
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump(const Duration(seconds: 1));
+    await _showResultPage(tester);
     await tester.tap(find.byKey(const ValueKey('simulate-failed')));
     await _showResultPage(tester);
 
@@ -222,8 +245,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('place-order-button')));
     // The pay button keeps spinning behind the sheet, so settle by time.
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump(const Duration(seconds: 1));
+    await _showResultPage(tester);
     await tester.tap(find.byKey(const ValueKey('simulate-pending')));
     await _showResultPage(tester);
 
@@ -257,6 +279,72 @@ void main() {
     expect(find.text('₹36'), findsWidgets);
   });
 
+  testWidgets('a delivered order can be rated once', (tester) async {
+    await _pumpApp(tester, prefs: _signedIn);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(Mart2DoorApp)),
+    );
+    final repo =
+        container.read(orderRepositoryProvider) as FakeOrderRepository;
+    final uid = container.read(currentUserProvider)!.uid;
+    final created = repo.create(
+      Order(
+        id: '',
+        userId: uid,
+        items: const [],
+        subtotalPaise: 10000,
+        deliveryFeePaise: 0,
+        totalPaise: 10000,
+        address: const Address(
+          name: 'Navi',
+          phone: '9876543210',
+          line1: '12, 4th Cross',
+          landmark: '',
+          pincode: '560034',
+        ),
+        paymentMethod: PaymentMethod.cod,
+        paymentStatus: PaymentStatus.pending,
+        status: OrderStatus.placed,
+        createdAt: DateTime.now(),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    final order = await created;
+
+    container.read(routerProvider).push(Routes.order(order.id));
+    await tester.pumpAndSettle();
+    // Nothing to rate until the order has been delivered by someone.
+    expect(find.text('Rate your delivery'), findsNothing);
+
+    repo.deliver(order.id, riderName: 'Suresh Kumar');
+    await tester.pumpAndSettle();
+    expect(find.text('How was Suresh Kumar?'), findsOneWidget);
+    // Submit stays off until stars are picked.
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('submit-rating-button')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byKey(const ValueKey('rate-star-4')));
+    await tester.pumpAndSettle();
+    expect(find.text('Very good'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('submit-rating-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('You rated this delivery'), findsOneWidget);
+    expect(find.byKey(const ValueKey('submit-rating-button')), findsNothing);
+    // The stars are locked after sending.
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('rate-star-1')))
+          .onPressed,
+      isNull,
+    );
+  });
+
   testWidgets('logging out returns to login', (tester) async {
     await _pumpApp(tester, prefs: _signedIn);
     await tester.tap(find.text('Account'));
@@ -271,5 +359,54 @@ void main() {
     await tester.tap(find.text('Log out').last);
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
+  });
+
+  testWidgets('deleting the account needs an OTP and wipes the phone', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      prefs: {..._signedIn, LocalStore.customerNameKey: 'Navi'},
+    );
+    await tester.tap(find.text('Account'));
+    await tester.pumpAndSettle();
+    final delete = find.byKey(const ValueKey('delete-account-button'));
+    await tester.scrollUntilVisible(
+      delete,
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete your account?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-delete-account')));
+    await tester.pumpAndSettle();
+
+    // A restored session is not recent, so an OTP is asked for. A wrong
+    // code is refused and nothing is deleted.
+    expect(find.text('Confirm it is you'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('confirm-otp-field')),
+      '000000',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-otp-button')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Incorrect OTP'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('confirm-otp-field')),
+      '123456',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-otp-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('Your account has been deleted.'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(LocalStore.customerNameKey), isNull);
+    expect(prefs.getString(LocalStore.pincodeKey), isNull);
+    expect(prefs.getString(LocalStore.demoSessionKey), isNull);
   });
 }

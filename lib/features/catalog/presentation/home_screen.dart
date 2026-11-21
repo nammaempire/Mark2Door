@@ -11,6 +11,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/shimmer.dart';
+import '../../orders/application/order_providers.dart';
+import '../../orders/presentation/live_order_card.dart';
 import '../../service_area/application/pincode_controller.dart';
 import '../../service_area/presentation/delivery_banner.dart';
 import '../../store/application/store_providers.dart';
@@ -125,6 +127,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             margin: EdgeInsets.fromLTRB(16, 16, 16, 0),
                           ),
                         ),
+                        SliverToBoxAdapter(child: _LiveOrderSection()),
                         SliverToBoxAdapter(child: SizedBox(height: 16)),
                         SliverToBoxAdapter(child: _PromoSection()),
                         SliverToBoxAdapter(
@@ -693,6 +696,39 @@ class _FreeDeliveryStrip extends ConsumerWidget {
           const Icon(Icons.arrow_forward_rounded, color: Colors.white),
         ],
       ),
+    );
+  }
+}
+
+/// The shopper's order that is on its way, as a live animated card at the
+/// top of the home page. It disappears once the order is delivered (or
+/// cancelled), so the page goes back to normal on its own.
+class _LiveOrderSection extends ConsumerWidget {
+  const _LiveOrderSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final orders = ref.watch(ordersProvider).valueOrNull ?? const [];
+    final active = orders.where((o) => o.isActive).toList(growable: false);
+    final more = active.length - 1;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: active.isEmpty
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: LiveOrderCard(
+                key: const ValueKey('home-live-order'),
+                order: active.first,
+                onTap: () => context.push(Routes.order(active.first.id)),
+                footer: more <= 0
+                    ? null
+                    : 'and $more more ${more == 1 ? 'order' : 'orders'} on '
+                        'the way. See them under Orders.',
+              ),
+            ),
     );
   }
 }

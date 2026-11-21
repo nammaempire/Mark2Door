@@ -17,6 +17,10 @@ abstract final class Env {
   static bool get _runningTests =>
       !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
 
+  /// True under `flutter test`. Endless animations stay still there, so
+  /// tests can wait for the screen to settle.
+  static bool get runningTests => _runningTests;
+
   /// Empty => simulated payment sheet instead of the Razorpay checkout.
   static const String razorpayKey = String.fromEnvironment('RAZORPAY_KEY');
 
