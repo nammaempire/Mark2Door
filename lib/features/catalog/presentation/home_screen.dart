@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/shimmer.dart';
+import '../../insights/demand_log.dart';
 import '../../orders/application/order_providers.dart';
 import '../../orders/presentation/live_order_card.dart';
 import '../../service_area/application/pincode_controller.dart';
@@ -31,11 +33,13 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _searchController = TextEditingController();
   Timer? _debounce;
+  Timer? _missTimer;
   String _query = '';
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _missTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -45,10 +49,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _debounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) setState(() => _query = value.trim());
     });
+    // Once the shopper has stopped typing, note a search that found
+    // nothing to buy, for the store to see in the admin web.
+    _missTimer?.cancel();
+    _missTimer = Timer(_missDelay, () => _recordMiss(value.trim()));
+  }
+
+  /// Long enough that half-typed words are not counted as searches.
+  static const _missDelay = Duration(milliseconds: 1500);
+
+  Future<void> _recordMiss(String term) async {
+    if (!mounted || term.length < DemandLog.minSearchLength) return;
+    try {
+      final ProductQuery query = (categoryId: null, query: term);
+      final found = await ref.read(productsProvider(query).future);
+      if (!mounted) return;
+      if (found.isEmpty) {
+        ref.read(demandLogProvider).searchMiss(term, SearchMiss.notFound);
+      } else if (found.every((p) => !p.inStock)) {
+        ref.read(demandLogProvider).searchMiss(term, SearchMiss.outOfStock);
+      }
+    } catch (_) {
+      // The search itself failed to load: nothing to learn from it.
+    }
   }
 
   void _clearSearch() {
     _debounce?.cancel();
+    _missTimer?.cancel();
     _searchController.clear();
     setState(() => _query = '');
   }
@@ -602,6 +630,7 @@ class _CategoryTile extends StatelessWidget {
               width: 72,
               height: 72,
               alignment: Alignment.center,
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 gradient: artColors != null
                     ? LinearGradient(
@@ -613,7 +642,23 @@ class _CategoryTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: palette.elevation,
               ),
-              child: EmojiText(style.emoji, size: 34),
+              // The store's picture for the category. A category saved
+              // before pictures existed, or whose picture fails to load,
+              // keeps its drawn icon.
+              child: category.imageUrl.isEmpty
+                  ? EmojiText(style.emoji, size: 34)
+                  : Image.network(
+                      category.imageUrl,
+                      key: ValueKey('category-image-${category.id}'),
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          EmojiText(style.emoji, size: 34),
+                      loadingBuilder: (_, child, progress) => progress == null
+                          ? child
+                          : EmojiText(style.emoji, size: 34),
+                    ),
             ),
             const SizedBox(height: 6),
             Text(

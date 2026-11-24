@@ -27,7 +27,12 @@ class PincodeController extends Notifier<String?> {
 final deliveryAvailableProvider = FutureProvider<bool>((ref) async {
   final pincode = ref.watch(pincodeProvider);
   if (pincode == null) return true;
-  return ref.watch(serviceAreaRepositoryProvider).isServiceable(pincode);
+  final served =
+      await ref.watch(serviceAreaRepositoryProvider).isServiceable(pincode);
+  // The store sees which pincodes shoppers ask for and cannot get, so it
+  // knows where to start delivering next.
+  if (!served) ref.read(demandLogProvider).pincodeNotServed(pincode);
+  return served;
 });
 
 /// False only once we know we do not deliver to the shopper's pincode.

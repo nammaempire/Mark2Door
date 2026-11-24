@@ -4,12 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mart2door/app.dart';
 import 'package:mart2door/core/config/env.dart';
 import 'package:mart2door/core/location/location_service.dart';
+import 'package:mart2door/core/network/network_status.dart';
 import 'package:mart2door/core/providers.dart';
 import 'package:mart2door/core/router/app_router.dart';
 import 'package:mart2door/core/storage/local_store.dart';
 import 'package:mart2door/features/cart/application/cart_controller.dart';
 import 'package:mart2door/features/catalog/domain/product.dart';
 import 'package:mart2door/features/checkout/data/coupon_repository.dart';
+import 'package:mart2door/features/insights/demand_log.dart';
 import 'package:mart2door/features/checkout/domain/address.dart';
 import 'package:mart2door/features/checkout/domain/coupon.dart';
 import 'package:mart2door/features/checkout/presentation/order_result_screen.dart';
@@ -109,6 +111,15 @@ Future<void> _placeCodOrder(WidgetTester tester) async {
 Future<Order> _onlyOrder(ProviderContainer container) async =>
     (await container.read(orderRepositoryProvider).watchOrders(_uid).first)
         .single;
+
+class _SwitchableProbe implements NetworkProbe {
+  _SwitchableProbe({required this.online});
+
+  bool online;
+
+  @override
+  Future<bool> reachable() async => online;
+}
 
 void main() {
   group('stock limit', () {
@@ -598,6 +609,182 @@ void main() {
       // The order can still be placed without a pin.
       await _placeCodOrder(tester);
       expect((await _onlyOrder(container)).address.hasPin, isFalse);
+    });
+  });
+
+  group('what customers could not get', () {
+    test('searches are tidied into one entry per term', () {
+      expect(DemandLog.normalise('  Dragon   FRUIT '), 'dragon fruit');
+      expect(DemandLog.keyFor('Dragon  Fruit!'), 'dragon-fruit');
+      expect(DemandLog.keyFor('a/b'), 'a-b');
+      expect(DemandLog.keyFor('???'), 'other');
+      expect(DemandLog.keyFor('x' * 90).length, 60);
+    });
+
+    test('each shopper is counted once, and half-typed words not at all',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = FakeDemandRepository();
+      final log = DemandLog(repo, LocalStore(await SharedPreferences.getInstance()));
+
+      log
+        ..pincodeNotServed('110001')
+        ..pincodeNotServed('110001')
+        ..pincodeNotServed('12') // not a pincode
+        ..searchMiss('Paneer', SearchMiss.notFound)
+        ..searchMiss(' paneer ', SearchMiss.notFound)
+        ..searchMiss('pa', SearchMiss.notFound)
+        ..searchMiss('butter', SearchMiss.outOfStock);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(repo.pincodes, ['110001']);
+      expect(repo.searches, [
+        ('paneer', SearchMiss.notFound),
+        ('butter', SearchMiss.outOfStock),
+      ]);
+    });
+
+    testWidgets('a pincode outside the delivery area is recorded', (
+      tester,
+    ) async {
+      final container = await _pumpApp(
+        tester,
+        prefs: const {
+          LocalStore.demoSessionKey: '+919876543210',
+          LocalStore.pincodeKey: '110001',
+        },
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      final repo =
+          container.read(demandRepositoryProvider) as FakeDemandRepository;
+      expect(repo.pincodes, ['110001']);
+    });
+
+    testWidgets('a pincode the store serves is not recorded', (tester) async {
+      final container = await _pumpApp(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      final repo =
+          container.read(demandRepositoryProvider) as FakeDemandRepository;
+      expect(repo.pincodes, isEmpty);
+    });
+
+    testWidgets('searches that find nothing to buy are recorded', (
+      tester,
+    ) async {
+      final container = await _pumpApp(tester);
+      final repo =
+          container.read(demandRepositoryProvider) as FakeDemandRepository;
+
+      Future<void> search(String text) async {
+        await tester.enterText(_key('search-field'), text);
+        // The shopper stops typing; the result is noted a moment later.
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+      }
+
+      // Nothing in the catalogue matches.
+      await search('dragon fruit');
+      expect(find.text('No products found'), findsOneWidget);
+      // Matches, but the only match is out of stock.
+      await search('butter');
+      // Something to buy: not recorded.
+      await search('milk');
+
+      expect(repo.searches, [
+        ('dragon fruit', SearchMiss.notFound),
+        ('butter', SearchMiss.outOfStock),
+      ]);
+    });
+  });
+
+  test('a category carries its picture, and old ones still load', () {
+    final withPicture = Category.fromMap('fruits', const {
+      'name': 'Fruits',
+      'icon': 'fruits',
+      'imageUrl': 'https://example.com/fruits.jpg',
+    });
+    expect(withPicture.imageUrl, 'https://example.com/fruits.jpg');
+    expect(withPicture.toMap()['imageUrl'], 'https://example.com/fruits.jpg');
+    // Saved before pictures existed: no picture, drawn icon kept.
+    final old = Category.fromMap('dairy', const {'name': 'Dairy'});
+    expect(old.imageUrl, '');
+    expect(old.icon, 'basket');
+  });
+
+  group('no internet', () {
+    Future<void> pumpWith(WidgetTester tester, _SwitchableProbe probe) async {
+      tester.view.physicalSize = const Size(1080, 2340);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      SharedPreferences.setMockInitialValues(_signedIn);
+      final store = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(store),
+            networkProbeProvider.overrideWithValue(probe),
+          ],
+          child: const Mart2DoorApp(),
+        ),
+      );
+    }
+
+    testWidgets('shimmer first, then "please connect" after three seconds', (
+      tester,
+    ) async {
+      final probe = _SwitchableProbe(online: false);
+      await pumpWith(tester, probe);
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Nothing from the store is shown, only the placeholder.
+      expect(_key('offline-cover'), findsOneWidget);
+      expect(_key('offline-shimmer'), findsOneWidget);
+      expect(_key('offline-message'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 2));
+      expect(_key('offline-message'), findsNothing);
+      await tester.pump(const Duration(seconds: 1));
+      expect(_key('offline-message'), findsOneWidget);
+      expect(find.text('No internet connection'), findsOneWidget);
+      expect(_key('offline-shimmer'), findsNothing);
+
+      // The network returns: the cover lifts by itself.
+      probe.online = true;
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(seconds: 1));
+      expect(_key('offline-cover'), findsNothing);
+
+      // Stop the background checks before the test ends.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('"Try again" checks straight away', (tester) async {
+      final probe = _SwitchableProbe(online: false);
+      await pumpWith(tester, probe);
+      await tester.pump(const Duration(seconds: 4));
+      expect(_key('offline-message'), findsOneWidget);
+
+      probe.online = true;
+      await tester.tap(_key('offline-retry-button'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(_key('offline-cover'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('a connected phone never sees the cover', (tester) async {
+      await pumpWith(tester, _SwitchableProbe(online: true));
+      await tester.pump(const Duration(seconds: 4));
+      expect(_key('offline-cover'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
     });
   });
 

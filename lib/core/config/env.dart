@@ -21,10 +21,6 @@ abstract final class Env {
   /// tests can wait for the screen to settle.
   static bool get runningTests => _runningTests;
 
-  /// Empty => simulated payment sheet instead of the Razorpay checkout.
-  static const String razorpayKey = String.fromEnvironment('RAZORPAY_KEY');
-
-  static bool get useRazorpay => razorpayKey.isNotEmpty;
 }
 
 /// Business rules that the admin panel will eventually own.

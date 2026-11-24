@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
@@ -34,19 +35,58 @@ class PaymentRequest {
 }
 
 abstract interface class PaymentGateway {
+  /// True when a successful payment is checked and recorded by the
+  /// server, so the app must not mark the order paid itself.
+  bool get confirmsOnServer;
+
   /// Never throws: every path resolves to a [PaymentResult].
   Future<PaymentResult> pay(PaymentRequest request);
 }
 
-/// Razorpay Standard Checkout.
+/// Online payment through Razorpay, with the server in charge of the
+/// money. The app never holds the secret key and cannot mark an order paid:
 ///
-/// PRODUCTION NOTE: before going live, create the Razorpay order and verify
-/// the payment signature on a server (Cloud Function) and pass `order_id`
-/// below. Client-only confirmation can be spoofed and must not mark an
-/// order as paid in production.
+/// 1. The server (`createPaymentOrder`) opens a Razorpay order for the
+///    amount due on the saved order, and sends back the public key id.
+/// 2. Razorpay's own screen takes the payment: UPI, cards, net banking,
+///    wallets.
+/// 3. The server (`verifyPayment`) checks Razorpay's signature and marks
+///    the order paid. If that call does not get through, the payment shows
+///    as pending and Razorpay's webhook settles it.
 class RazorpayPaymentGateway implements PaymentGateway {
+  RazorpayPaymentGateway(this._functions);
+
+  final FirebaseFunctions _functions;
+
   @override
-  Future<PaymentResult> pay(PaymentRequest request) {
+  bool get confirmsOnServer => true;
+
+  @override
+  Future<PaymentResult> pay(PaymentRequest request) async {
+    final String keyId;
+    final String razorpayOrderId;
+    final int amountPaise;
+    try {
+      final opened = await _functions
+          .httpsCallable('createPaymentOrder')
+          .call<Map<Object?, Object?>>({'orderId': request.orderId}).timeout(
+              const Duration(seconds: 30));
+      keyId = opened.data['keyId']! as String;
+      razorpayOrderId = opened.data['razorpayOrderId']! as String;
+      amountPaise = (opened.data['amountPaise']! as num).toInt();
+    } on FirebaseFunctionsException catch (e) {
+      return PaymentResult(
+        PaymentOutcome.failed,
+        message: e.message ?? 'Could not start the payment.',
+      );
+    } catch (_) {
+      return const PaymentResult(
+        PaymentOutcome.failed,
+        message: 'Could not start the payment. Check your internet and try '
+            'again.',
+      );
+    }
+
     final completer = Completer<PaymentResult>();
     final razorpay = Razorpay();
 
@@ -56,22 +96,53 @@ class RazorpayPaymentGateway implements PaymentGateway {
       completer.complete(result);
     }
 
+    Future<void> confirm(PaymentSuccessResponse paid) async {
+      try {
+        await _functions
+            .httpsCallable('verifyPayment')
+            .call<Map<Object?, Object?>>({
+          'orderId': request.orderId,
+          'razorpayPaymentId': paid.paymentId,
+          'razorpaySignature': paid.signature,
+        }).timeout(const Duration(seconds: 30));
+        finish(
+            PaymentResult(PaymentOutcome.success, paymentId: paid.paymentId));
+      } on FirebaseFunctionsException catch (e) {
+        // The server looked and refused: this payment is not genuine.
+        finish(
+          e.code == 'permission-denied'
+              ? PaymentResult(PaymentOutcome.failed, message: e.message)
+              : const PaymentResult(PaymentOutcome.pending),
+        );
+      } catch (_) {
+        // The money was taken but the server could not be reached. The
+        // webhook confirms it; until then the order shows as pending.
+        finish(const PaymentResult(PaymentOutcome.pending));
+      }
+    }
+
     razorpay
-      ..on(Razorpay.EVENT_PAYMENT_SUCCESS, (PaymentSuccessResponse r) {
-        finish(PaymentResult(PaymentOutcome.success, paymentId: r.paymentId));
-      })
+      ..on(Razorpay.EVENT_PAYMENT_SUCCESS, confirm)
       ..on(Razorpay.EVENT_PAYMENT_ERROR, (PaymentFailureResponse r) {
-        finish(PaymentResult(PaymentOutcome.failed, message: r.message));
+        finish(
+          PaymentResult(
+            PaymentOutcome.failed,
+            message: r.code == Razorpay.PAYMENT_CANCELLED
+                ? 'Payment cancelled.'
+                : r.message,
+          ),
+        );
       })
       ..on(Razorpay.EVENT_EXTERNAL_WALLET, (ExternalWalletResponse r) {
-        // Wallet apps confirm asynchronously; the server webhook settles it.
+        // Wallet apps confirm later; the server webhook settles it.
         finish(const PaymentResult(PaymentOutcome.pending));
       });
 
     try {
       razorpay.open({
-        'key': Env.razorpayKey,
-        'amount': request.amountPaise,
+        'key': keyId,
+        'order_id': razorpayOrderId,
+        'amount': amountPaise,
         'currency': 'INR',
         'name': AppConfig.appName,
         'description': request.description,
@@ -89,12 +160,15 @@ class RazorpayPaymentGateway implements PaymentGateway {
   }
 }
 
-/// Stand-in used when no Razorpay key is configured: lets you pick the
-/// outcome so the success, failure and pending journeys can all be tested.
+/// Stand-in used with sample data (no Firebase): lets you pick the outcome
+/// so the success, failure and pending journeys can all be tried.
 class SimulatedPaymentGateway implements PaymentGateway {
   SimulatedPaymentGateway(this._navigatorKey);
 
   final GlobalKey<NavigatorState> _navigatorKey;
+
+  @override
+  bool get confirmsOnServer => false;
 
   @override
   Future<PaymentResult> pay(PaymentRequest request) async {

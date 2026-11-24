@@ -218,11 +218,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         ],
                       ),
                     ),
-                    if (_method == PaymentMethod.online && !Env.useRazorpay) ...[
+                    if (_method == PaymentMethod.online &&
+                        !Env.useFirebase) ...[
                       const SizedBox(height: 12),
                       const HintBanner(
-                        'No Razorpay key is set, so online payment opens a '
-                        'test sheet where you pick the result.',
+                        'Sample-data mode: online payment opens a test sheet '
+                        'where you pick the result.',
                       ),
                     ],
                     const SectionLabel('Apply coupon'),

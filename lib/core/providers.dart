@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
@@ -11,6 +12,7 @@ import '../features/catalog/data/catalog_repository.dart';
 import '../features/catalog/data/fake_catalog_repository.dart';
 import '../features/catalog/data/firestore_catalog_repository.dart';
 import '../features/checkout/data/coupon_repository.dart';
+import '../features/insights/demand_log.dart';
 import '../features/checkout/data/payment_gateway.dart';
 import '../features/orders/data/fake_order_repository.dart';
 import '../features/orders/data/firestore_order_repository.dart';
@@ -95,8 +97,10 @@ final storeRepositoryProvider = Provider<StoreRepository>((ref) {
 });
 
 final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
-  return Env.useRazorpay
-      ? RazorpayPaymentGateway()
+  // With the real backend, payments go through Razorpay and are confirmed
+  // by the server. Sample data keeps the try-it-out sheet.
+  return Env.useFirebase
+      ? RazorpayPaymentGateway(FirebaseFunctions.instance)
       : SimulatedPaymentGateway(rootNavigatorKey);
 });
 
@@ -112,3 +116,17 @@ final pushServiceProvider = Provider<PushService>((ref) {
 final locationServiceProvider = Provider<LocationService>((ref) {
   return Env.useFirebase ? DeviceLocationService() : FakeLocationService();
 });
+
+final demandRepositoryProvider = Provider<DemandRepository>((ref) {
+  return Env.useFirebase
+      ? FirestoreDemandRepository(FirebaseFirestore.instance)
+      : FakeDemandRepository();
+});
+
+/// Tells the store what shoppers wanted and could not get.
+final demandLogProvider = Provider<DemandLog>(
+  (ref) => DemandLog(
+    ref.watch(demandRepositoryProvider),
+    ref.watch(localStoreProvider),
+  ),
+);

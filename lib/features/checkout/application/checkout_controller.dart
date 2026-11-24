@@ -162,7 +162,8 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
       return CheckoutResult(orderId: order.id, outcome: PaymentOutcome.success);
     }
 
-    final payment = await ref.read(paymentGatewayProvider).pay(
+    final gateway = ref.read(paymentGatewayProvider);
+    final payment = await gateway.pay(
           PaymentRequest(
             orderId: order.id,
             amountPaise: order.payablePaise,
@@ -173,11 +174,15 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
 
     switch (payment.outcome) {
       case PaymentOutcome.success:
-        await orders.updatePayment(
-          order.id,
-          paymentStatus: PaymentStatus.paid,
-          paymentId: payment.paymentId,
-        );
+        // With Razorpay the server has already checked the payment and
+        // marked the order paid; the app is not allowed to.
+        if (!gateway.confirmsOnServer) {
+          await orders.updatePayment(
+            order.id,
+            paymentStatus: PaymentStatus.paid,
+            paymentId: payment.paymentId,
+          );
+        }
         ref.read(cartProvider.notifier).clear();
       case PaymentOutcome.pending:
         await orders.updatePayment(

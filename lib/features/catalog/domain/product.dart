@@ -2,21 +2,33 @@ import 'package:flutter/foundation.dart';
 
 @immutable
 class Category {
-  const Category({required this.id, required this.name, required this.icon});
+  const Category({
+    required this.id,
+    required this.name,
+    this.icon = 'basket',
+    this.imageUrl = '',
+  });
 
   final String id;
   final String name;
 
-  /// Key resolved to an icon by `CategoryIcon`; lets Firestore stay UI-agnostic.
+  /// Older categories were given a drawn icon by this key. It is still
+  /// used for the tile's background colour, and for the picture itself
+  /// when a category has no image yet.
   final String icon;
+
+  /// Picture for the category tile, linked or uploaded in the admin web.
+  final String imageUrl;
 
   factory Category.fromMap(String id, Map<String, dynamic> map) => Category(
         id: id,
         name: map['name'] as String? ?? '',
         icon: map['icon'] as String? ?? 'basket',
+        imageUrl: map['imageUrl'] as String? ?? '',
       );
 
-  Map<String, dynamic> toMap() => {'name': name, 'icon': icon};
+  Map<String, dynamic> toMap() =>
+      {'name': name, 'icon': icon, 'imageUrl': imageUrl};
 }
 
 @immutable
