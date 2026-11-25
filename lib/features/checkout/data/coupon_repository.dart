@@ -9,6 +9,9 @@ abstract interface class CouponRepository {
 
   /// Whether the customer [uid] has already used a once-only [code].
   Future<bool> alreadyUsed(String code, String uid);
+
+  /// Every coupon the store has switched on, for the list at checkout.
+  Future<List<Coupon>> fetchAll();
 }
 
 /// Sample coupons so the app can be tried without a backend.
@@ -49,6 +52,10 @@ class FakeCouponRepository implements CouponRepository {
   @override
   Future<bool> alreadyUsed(String code, String uid) async =>
       used.contains('$code|$uid');
+
+  @override
+  Future<List<Coupon>> fetchAll() async =>
+      coupons.values.where((c) => c.active).toList(growable: false);
 }
 
 /// Collection: `coupons/{CODE}`, with one `uses/{uid}` document for each
@@ -76,5 +83,14 @@ class FirestoreCouponRepository implements CouponRepository {
         .doc(uid)
         .get();
     return doc.exists;
+  }
+
+  @override
+  Future<List<Coupon>> fetchAll() async {
+    final snap = await _db.collection('coupons').get();
+    return snap.docs
+        .map((d) => Coupon.fromMap(d.id, d.data()))
+        .where((c) => c.active)
+        .toList(growable: false);
   }
 }

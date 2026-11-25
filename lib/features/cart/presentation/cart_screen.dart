@@ -9,6 +9,7 @@ import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/shimmer.dart';
 import '../../catalog/application/catalog_providers.dart';
 import '../../catalog/presentation/product_widgets.dart';
+import '../../offers/slab_offer_section.dart';
 import '../../service_area/application/pincode_controller.dart';
 import '../../service_area/presentation/delivery_banner.dart';
 import '../application/cart_controller.dart';
@@ -49,6 +50,7 @@ class CartScreen extends ConsumerWidget {
                           children: [
                             if (cart.toFreeDeliveryPaise > 0)
                               _FreeDeliveryHint(cart: cart),
+                            const SlabOfferSection(),
                             Card(
                               child: Column(
                                 children: [
@@ -66,6 +68,7 @@ class CartScreen extends ConsumerWidget {
                               subtotalPaise: cart.subtotalPaise,
                               mrpTotalPaise: cart.mrpTotalPaise,
                               deliveryFeePaise: cart.deliveryFeePaise,
+                              courier: cart.courier,
                               handlingFeePaise: cart.handlingFeePaise,
                               rainFeePaise: cart.rainFeePaise,
                               totalPaise: cart.totalPaise,
@@ -153,7 +156,7 @@ class _FreeDeliveryHint extends StatelessWidget {
           Expanded(
             child: Text(
               'Add ${formatPaise(cart.toFreeDeliveryPaise)} more for free '
-              'delivery',
+              '${cart.courier ? 'outstation ' : ''}delivery',
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,

@@ -13,10 +13,9 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/shimmer.dart';
 import '../../insights/demand_log.dart';
-import '../../orders/application/order_providers.dart';
-import '../../orders/presentation/live_order_card.dart';
+import '../../orders/presentation/live_order_bar.dart';
 import '../../service_area/application/pincode_controller.dart';
-import '../../service_area/presentation/delivery_banner.dart';
+import '../../service_area/presentation/shop_tabs.dart';
 import '../../store/application/store_providers.dart';
 import '../application/catalog_providers.dart';
 import '../domain/product.dart';
@@ -124,6 +123,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final categories =
         ref.watch(categoriesProvider).valueOrNull ?? const <Category>[];
     final searching = _query.isNotEmpty;
+    // Out of the delivery area, on Instant, with no pincode picked yet.
+    final needsPincode = !ref.watch(canOrderProvider);
+    final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
@@ -135,6 +137,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onChanged: _onSearchChanged,
                 onClear: _clearSearch,
               ),
+              const ShopTabs(),
+              if (needsPincode)
+                const Expanded(child: InstantUnavailablePanel())
+              else
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async {
@@ -149,13 +155,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         SliverToBoxAdapter(
                           child: _SectionTitle('Results for "$_query"'),
                         )
-                      else ...const [
+                      else if (outstation) ...const [
+                        // The Outstation page: its own colour, a courier
+                        // banner and one plain list, so it cannot be
+                        // mistaken for the instant store.
                         SliverToBoxAdapter(
-                          child: NotServiceableBanner(
-                            margin: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          child: DeliveryModeBanner(
+                            margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
                           ),
                         ),
-                        SliverToBoxAdapter(child: _LiveOrderSection()),
+                        SliverToBoxAdapter(child: _OutstationHero()),
+                        SliverToBoxAdapter(child: _PerksStrip()),
+                        SliverToBoxAdapter(child: _FreeDeliveryStrip()),
+                      ] else ...const [
+                        SliverToBoxAdapter(
+                          child: DeliveryModeBanner(
+                            margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          ),
+                        ),
                         SliverToBoxAdapter(child: SizedBox(height: 16)),
                         SliverToBoxAdapter(child: _PromoSection()),
                         SliverToBoxAdapter(
@@ -173,11 +190,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               child: EmptyState(
                                 icon: Icons.search_off_rounded,
                                 title: 'No products found',
-                                message: 'Try a different name or category.',
+                                message: 'Try a different name, category '
+                                    'or tab.',
                               ),
                             )
                           else ...[
-                            if (!searching && _deals(items).isNotEmpty) ...[
+                            if (!searching && outstation)
+                              const SliverToBoxAdapter(
+                                child: _SectionTitle(
+                                  'Sent all over India',
+                                  icon: Icons.local_shipping_rounded,
+                                ),
+                              ),
+                            if (!searching &&
+                                !outstation &&
+                                _deals(items).isNotEmpty) ...[
                               const SliverToBoxAdapter(
                                 child: _SectionTitle(
                                   'Deals of the day',
@@ -191,7 +218,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 ),
                               ),
                             ],
-                            if (!searching) ...[
+                            if (!searching && !outstation) ...[
                               for (final rail in _byCategory(categories, items))
                                 ...[
                                   SliverToBoxAdapter(
@@ -271,6 +298,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ),
               ),
+              // The order on its way rises from the bottom, above the cart.
+              const LiveOrderBar(),
               const CartBar(),
             ],
           ),
@@ -292,8 +321,11 @@ class _Header extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pincode = ref.watch(pincodeProvider) ?? '';
-    final eta = ref.watch(storeSettingsProvider).deliveryEtaMinutes;
+    final pincode = ref.watch(deliveryPincodeProvider) ??
+        ref.watch(pincodeProvider) ??
+        '';
+    final settings = ref.watch(storeSettingsProvider);
+    final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
     final palette = context.palette;
     final topInset = MediaQuery.paddingOf(context).top;
     const searchBorder = OutlineInputBorder(
@@ -307,7 +339,9 @@ class _Header extends ConsumerWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [palette.primaryLight, palette.primaryDark],
+          colors: outstation
+              ? const [AppColors.outstationLight, AppColors.outstationDark]
+              : [palette.primaryLight, palette.primaryDark],
         ),
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
@@ -317,6 +351,7 @@ class _Header extends ConsumerWidget {
             children: [
               Expanded(
                 child: InkWell(
+                  key: const ValueKey('header-pincode'),
                   onTap: () => context.push(Routes.pincode),
                   borderRadius: BorderRadius.circular(12),
                   child: Row(
@@ -385,14 +420,18 @@ class _Header extends ConsumerWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.bolt_rounded,
+                    Icon(
+                      outstation
+                          ? Icons.local_shipping_rounded
+                          : Icons.bolt_rounded,
                       size: 16,
                       color: AppColors.accent,
                     ),
-                    const SizedBox(width: 2),
+                    const SizedBox(width: 3),
                     Text(
-                      '$eta min',
+                      outstation
+                          ? settings.courierEta
+                          : '${settings.deliveryEtaMinutes} min',
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -413,10 +452,12 @@ class _Header extends ConsumerWidget {
               onChanged: onChanged,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Search milk, atta, fruits',
+                hintText: outstation
+                    ? 'Search outstation products'
+                    : 'Search milk, atta, fruits',
                 prefixIcon: Icon(
                   Icons.search_rounded,
-                  color: palette.primary,
+                  color: outstation ? AppColors.outstation : palette.primary,
                 ),
                 suffixIcon: value.text.isEmpty
                     ? null
@@ -529,12 +570,125 @@ class _SectionTitle extends StatelessWidget {
 }
 
 /// Three short promises under the free-delivery strip.
+/// The banner at the top of the Outstation page: what it is, how long it
+/// takes, and the four steps a parcel goes through.
+class _OutstationHero extends ConsumerWidget {
+  const _OutstationHero();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final days = ref.watch(storeSettingsProvider).courierEta;
+    Widget step(IconData icon, String label) => Expanded(
+          child: Column(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: const BoxDecoration(
+                  color: Color(0x33FFFFFF),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 20, color: Colors.white),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        );
+    const arrow = Padding(
+      padding: EdgeInsets.only(bottom: 18),
+      child: Icon(
+        Icons.chevron_right_rounded,
+        size: 18,
+        color: Color(0x99FFFFFF),
+      ),
+    );
+    return Container(
+      key: const ValueKey('outstation-hero'),
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.outstationLight, AppColors.outstationDark],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x4012305A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Delivered all\nover India',
+                      style: TextStyle(
+                        fontSize: 22,
+                        height: 1.15,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Delivered to your door in $days',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xE6FFFFFF),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const EmojiText('📦', size: 54),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              step(Icons.shopping_bag_rounded, 'Order'),
+              arrow,
+              step(Icons.inventory_2_rounded, 'Packed'),
+              arrow,
+              step(Icons.local_shipping_rounded, 'Shipped'),
+              arrow,
+              step(Icons.home_rounded, 'Delivered'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PerksStrip extends ConsumerWidget {
   const _PerksStrip();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final eta = ref.watch(storeSettingsProvider).deliveryEtaMinutes;
+    final settings = ref.watch(storeSettingsProvider);
+    final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
     Widget perk(IconData icon, String title, String subtitle) => Expanded(
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
@@ -545,7 +699,13 @@ class _PerksStrip extends ConsumerWidget {
             ),
             child: Column(
               children: [
-                Icon(icon, size: 22, color: context.palette.primary),
+                Icon(
+                  icon,
+                  size: 22,
+                  color: outstation
+                      ? AppColors.outstation
+                      : context.palette.primary,
+                ),
                 const SizedBox(height: 6),
                 Text(
                   title,
@@ -574,11 +734,25 @@ class _PerksStrip extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       child: Row(
         children: [
-          perk(Icons.bolt_rounded, '$eta min', 'delivery'),
+          outstation
+              ? perk(
+                  Icons.local_shipping_rounded,
+                  settings.courierEta,
+                  'delivery',
+                )
+              : perk(
+                  Icons.bolt_rounded,
+                  '${settings.deliveryEtaMinutes} min',
+                  'delivery',
+                ),
           const SizedBox(width: 10),
-          perk(Icons.verified_rounded, 'Fresh', 'quality checked'),
+          outstation
+              ? perk(Icons.lock_rounded, 'Pay online', 'UPI and cards')
+              : perk(Icons.verified_rounded, 'Fresh', 'quality checked'),
           const SizedBox(width: 10),
-          perk(Icons.sell_rounded, 'Best prices', 'every day'),
+          outstation
+              ? perk(Icons.pin_drop_rounded, 'Track it', 'tracking number')
+              : perk(Icons.sell_rounded, 'Best prices', 'every day'),
         ],
       ),
     );
@@ -591,8 +765,10 @@ class _CategoryStrip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(categoriesProvider);
+    // Two lines of name under each picture: taller at larger font sizes.
+    final scale = MediaQuery.textScalerOf(context).scale(100) / 100;
     return SizedBox(
-      height: 124,
+      height: 124 + (scale > 1 ? 36 * (scale - 1) : 0),
       child: categories.when(
         loading: () => const CategoryStripSkeleton(),
         error: (_, __) => const SizedBox.shrink(),
@@ -602,15 +778,16 @@ class _CategoryStrip extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(width: 12),
-          itemBuilder: (context, i) => _CategoryTile(category: items[i]),
+          itemBuilder: (context, i) => CategoryTile(category: items[i]),
         ),
       ),
     );
   }
 }
 
-class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({required this.category});
+/// A category's picture and name; opens its products when tapped.
+class CategoryTile extends StatelessWidget {
+  const CategoryTile({super.key, required this.category});
 
   final Category category;
 
@@ -685,10 +862,15 @@ class _FreeDeliveryStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final threshold =
-        ref.watch(storeSettingsProvider).freeDeliveryThresholdPaise;
-    final strip = context.palette.stripColors ??
-        const [Color(0xFFFFA94D), Color(0xFFF2600C)];
+    final settings = ref.watch(storeSettingsProvider);
+    final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
+    final threshold = outstation
+        ? settings.courierFreeAbovePaise
+        : settings.freeDeliveryThresholdPaise;
+    final strip = outstation
+        ? const [Color(0xFFFFA94D), Color(0xFFF2600C)]
+        : context.palette.stripColors ??
+            const [Color(0xFFFFA94D), Color(0xFFF2600C)];
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -713,15 +895,15 @@ class _FreeDeliveryStrip extends ConsumerWidget {
               color: const Color(0x38FFFFFF),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const EmojiText('🛵', size: 24),
+            child: EmojiText(outstation ? '📦' : '🛵', size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Free delivery',
+                Text(
+                  outstation ? 'Free outstation delivery' : 'Free delivery',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -745,35 +927,3 @@ class _FreeDeliveryStrip extends ConsumerWidget {
   }
 }
 
-/// The shopper's order that is on its way, as a live animated card at the
-/// top of the home page. It disappears once the order is delivered (or
-/// cancelled), so the page goes back to normal on its own.
-class _LiveOrderSection extends ConsumerWidget {
-  const _LiveOrderSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final orders = ref.watch(ordersProvider).valueOrNull ?? const [];
-    final active = orders.where((o) => o.isActive).toList(growable: false);
-    final more = active.length - 1;
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      child: active.isEmpty
-          ? const SizedBox(width: double.infinity)
-          : Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: LiveOrderCard(
-                key: const ValueKey('home-live-order'),
-                order: active.first,
-                onTap: () => context.push(Routes.order(active.first.id)),
-                footer: more <= 0
-                    ? null
-                    : 'and $more more ${more == 1 ? 'order' : 'orders'} on '
-                        'the way. See them under Orders.',
-              ),
-            ),
-    );
-  }
-}

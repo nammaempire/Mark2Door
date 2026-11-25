@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../reviews/review_widgets.dart';
 import '../../../core/config/env.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
@@ -9,6 +10,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/shimmer.dart';
 import '../../cart/application/cart_controller.dart';
+import '../../service_area/application/pincode_controller.dart';
 import '../../store/application/store_providers.dart';
 import '../application/catalog_providers.dart';
 import '../domain/product.dart';
@@ -73,7 +75,8 @@ class _Body extends ConsumerWidget {
       [product],
     );
     final savedPaise = product.mrpPaise - product.pricePaise;
-    final eta = ref.watch(storeSettingsProvider).deliveryEtaMinutes;
+    final settings = ref.watch(storeSettingsProvider);
+    final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
 
     return Column(
       children: [
@@ -189,7 +192,17 @@ class _Body extends ConsumerWidget {
                     const SizedBox(height: 18),
                     Row(
                       children: [
-                        _Perk(Icons.bolt_rounded, '$eta min', 'delivery'),
+                        outstation
+                            ? _Perk(
+                                Icons.local_shipping_rounded,
+                                settings.courierEta,
+                                'delivery',
+                              )
+                            : _Perk(
+                                Icons.bolt_rounded,
+                                '${settings.deliveryEtaMinutes} min',
+                                'delivery',
+                              ),
                         const SizedBox(width: 10),
                         const _Perk(
                           Icons.verified_rounded,
@@ -220,6 +233,7 @@ class _Body extends ConsumerWidget {
                         ),
                       ),
                     ],
+                    ProductReviews(productId: product.id),
                   ],
                 ),
               ),

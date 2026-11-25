@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/storage/local_store.dart';
+import '../../service_area/application/pincode_controller.dart';
 import '../domain/address.dart';
 
 /// The delivery addresses saved on this device and the one in use.
@@ -48,6 +49,19 @@ final addressBookProvider =
 final savedAddressProvider = Provider<Address?>(
   (ref) => ref.watch(addressBookProvider).selected,
 );
+
+/// The saved address the order being placed now can go to; null when a
+/// new one has to be typed. Inside the delivery area it is simply the
+/// address in use. Outside it, the address must be in the pincode being
+/// shopped for: the one picked on the Instant tab, or the shopper's own
+/// on the Outstation tab.
+final checkoutAddressProvider = Provider<Address?>((ref) {
+  final book = ref.watch(addressBookProvider);
+  if (!ref.watch(outOfAreaProvider)) return book.selected;
+  final pincode = ref.watch(deliveryPincodeProvider);
+  if (book.selected?.pincode == pincode) return book.selected;
+  return book.addresses.where((a) => a.pincode == pincode).firstOrNull;
+});
 
 class AddressBookController extends Notifier<AddressBook> {
   LocalStore get _store => ref.read(localStoreProvider);

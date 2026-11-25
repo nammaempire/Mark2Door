@@ -162,7 +162,9 @@ class _AddressFormSheetState extends ConsumerState<_AddressFormSheet> {
     _fields = AddressFields.from(
       widget.initial,
       phone: ref.read(currentUserProvider)?.phone ?? '',
-      pincode: ref.read(pincodeProvider) ?? '',
+      pincode: ref.read(deliveryPincodeProvider) ??
+          ref.read(pincodeProvider) ??
+          '',
       name: ref.read(customerNameProvider),
     );
   }
@@ -310,15 +312,15 @@ class AddressFormFields extends StatelessWidget {
         _field(
           key: 'name-field',
           controller: fields.name,
-          label: 'Full name',
-          validator: Validators.required('your name'),
+          label: "Receiver's name",
+          validator: Validators.required("the receiver's name"),
           capitalization: TextCapitalization.words,
           autofill: AutofillHints.name,
         ),
         _field(
           key: 'address-phone-field',
           controller: fields.phone,
-          label: 'Mobile number',
+          label: "Receiver's mobile number",
           validator: Validators.phone,
           keyboard: TextInputType.phone,
           formatters: [
@@ -423,6 +425,28 @@ class _PinLocationState extends ConsumerState<_PinLocation> {
 
   @override
   Widget build(BuildContext context) {
+    // The phone's position only helps when the shopper is ordering for
+    // the pincode they are in. Ordering for a home elsewhere, the pin
+    // would send the delivery partner to the wrong town; courier orders
+    // do not use a map at all.
+    if (ref.watch(outOfAreaProvider)) {
+      if (!ref.watch(orderingForElsewhereProvider)) {
+        return const SizedBox.shrink();
+      }
+      return const Row(
+        key: ValueKey('receiver-call-note'),
+        children: [
+          Icon(Icons.call_rounded, size: 18, color: AppColors.textMuted),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'The delivery partner will call the receiver for directions.',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+          ),
+        ],
+      );
+    }
     return ValueListenableBuilder<MapPin?>(
       valueListenable: widget.pin,
       builder: (context, pin, _) {

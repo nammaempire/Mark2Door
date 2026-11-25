@@ -31,9 +31,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// Ticked by the shopper: they accept the terms and privacy policy.
+  bool _agreed = false;
+  bool _agreeError = false;
+
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     if (_loading || !_formKey.currentState!.validate()) return;
+    if (!_agreed) {
+      // The OTP is sent only after the shopper accepts the two pages.
+      setState(() => _agreeError = true);
+      return;
+    }
 
     final phone = '${AppConfig.countryCode}${_phoneController.text.trim()}';
     setState(() => _loading = true);
@@ -127,8 +136,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         onPressed: _loading ? null : _submit,
                         child: LoadingLabel('Get OTP', loading: _loading),
                       ),
-                      const SizedBox(height: 28),
-                      const Center(child: _LegalLinks()),
+                      const SizedBox(height: 16),
+                      _LegalLinks(
+                        agreed: _agreed,
+                        showError: _agreeError && !_agreed,
+                        onChanged: (v) => setState(() {
+                          _agreed = v;
+                          _agreeError = false;
+                        }),
+                      ),
                     ],
                   ),
                 ),
@@ -170,10 +186,19 @@ class _CountryPrefix extends StatelessWidget {
   }
 }
 
-/// "By continuing, you agree to our Terms and conditions and Privacy
-/// policy", where both names open the page the store has published.
+/// The checkbox "I agree to the Terms and conditions and Privacy policy",
+/// where both names open the page the store has published. It has to be
+/// ticked before an OTP is sent.
 class _LegalLinks extends StatelessWidget {
-  const _LegalLinks();
+  const _LegalLinks({
+    required this.agreed,
+    required this.showError,
+    required this.onChanged,
+  });
+
+  final bool agreed;
+  final bool showError;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -199,21 +224,61 @@ class _LegalLinks extends StatelessWidget {
           ),
         );
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('By continuing, you agree to our', style: plain),
-        Wrap(
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            link(
-              'login-terms-link',
-              'Terms and conditions',
-              LegalPage.termsId,
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: Checkbox(
+                key: const ValueKey('agree-checkbox'),
+                value: agreed,
+                isError: showError,
+                onChanged: (v) => onChanged(v ?? false),
+              ),
             ),
-            const Text(' and ', style: plain),
-            link('login-privacy-link', 'Privacy policy', LegalPage.privacyId),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    GestureDetector(
+                      onTap: () => onChanged(!agreed),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 4),
+                        child: Text('I agree to the ', style: plain),
+                      ),
+                    ),
+                    link(
+                      'login-terms-link',
+                      'Terms and conditions',
+                      LegalPage.termsId,
+                    ),
+                    const Text(' and ', style: plain),
+                    link(
+                      'login-privacy-link',
+                      'Privacy policy',
+                      LegalPage.privacyId,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
+        if (showError)
+          const Padding(
+            key: ValueKey('agree-error'),
+            padding: EdgeInsets.only(left: 42, top: 2),
+            child: Text(
+              'Tick the box to accept and continue.',
+              style: TextStyle(fontSize: 12, color: AppColors.danger),
+            ),
+          ),
       ],
     );
   }

@@ -55,8 +55,8 @@ class NotServiceableBanner extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 const Text(
-                  'You can look around, but ordering is not available in '
-                  'this area.',
+                  'Choose a pincode we deliver to on the home page, or '
+                  'shop from the Outstation tab.',
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.35,

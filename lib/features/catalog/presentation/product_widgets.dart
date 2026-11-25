@@ -155,6 +155,16 @@ class PriceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Shrinks to fit instead of running off the card when the price and
+    // MRP are long or the phone's font is large.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: _row(),
+    );
+  }
+
+  Widget _row() {
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -387,7 +397,16 @@ class SoftCard extends StatelessWidget {
 class ProductCard extends ConsumerWidget {
   const ProductCard({super.key, required this.product, this.keyPrefix = 'add'});
 
-  static const double height = 244;
+  /// Card height at the normal font size.
+  static const double height = 250;
+
+  /// Card height on this phone: taller when the phone's font size setting
+  /// is larger, so the name and price always fit.
+  static double heightOf(BuildContext context) {
+    // About 86 pixels of the card are lines of text.
+    final scale = MediaQuery.textScalerOf(context).scale(100) / 100;
+    return height + (scale > 1 ? 86 * (scale - 1) : 0);
+  }
 
   final Product product;
   final String keyPrefix;
@@ -492,14 +511,21 @@ class _DeliveryTag extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final eta = ref.watch(storeSettingsProvider).deliveryEtaMinutes;
+    final settings = ref.watch(storeSettingsProvider);
+    final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.bolt_rounded, size: 13, color: AppColors.accent),
-        const SizedBox(width: 2),
+        Icon(
+          outstation ? Icons.local_shipping_rounded : Icons.bolt_rounded,
+          size: 13,
+          color: outstation ? AppColors.outstation : AppColors.accent,
+        ),
+        const SizedBox(width: 3),
         Text(
-          '$eta MIN',
+          outstation
+              ? settings.courierEta.toUpperCase()
+              : '${settings.deliveryEtaMinutes} MIN',
           style: const TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w800,
@@ -558,11 +584,11 @@ class ProductGrid extends StatelessWidget {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       sliver: SliverGrid.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           mainAxisSpacing: 14,
           crossAxisSpacing: 14,
-          mainAxisExtent: ProductCard.height,
+          mainAxisExtent: ProductCard.heightOf(context),
         ),
         itemCount: products.length,
         itemBuilder: (context, i) => ProductCard(product: products[i]),
@@ -586,7 +612,7 @@ class ProductRail extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       // Extra room so card shadows are not clipped by the list viewport.
-      height: ProductCard.height + 32,
+      height: ProductCard.heightOf(context) + 32,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),

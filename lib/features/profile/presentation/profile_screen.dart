@@ -56,6 +56,10 @@ class ProfileScreen extends ConsumerWidget {
     final address = ref.watch(savedAddressProvider);
     final customerName = ref.watch(customerNameProvider);
     final walletBalance = ref.watch(walletBalanceProvider);
+    // The name given at sign-up, else the one on the saved address.
+    final displayName = customerName.trim().isNotEmpty
+        ? customerName.trim()
+        : (address?.name ?? '').trim();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Account')),
@@ -66,17 +70,9 @@ class ProfileScreen extends ConsumerWidget {
             child: ListTile(
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              leading: const CircleAvatar(
-                radius: 24,
-                backgroundColor: AppColors.primarySoft,
-                child: Icon(Icons.person_rounded, color: AppColors.primary),
-              ),
+              leading: ProfileAvatar(name: displayName),
               title: Text(
-                customerName.isNotEmpty
-                    ? customerName
-                    : address?.name.isNotEmpty ?? false
-                        ? address!.name
-                        : 'mart2door shopper',
+                displayName.isEmpty ? 'mart2door shopper' : displayName,
                 key: const ValueKey('profile-name'),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
@@ -218,6 +214,78 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The shopper's picture on the account page: the first letter of their
+/// name inside a ring of gradient colour. Shows a person icon until a
+/// name is known.
+class ProfileAvatar extends StatelessWidget {
+  const ProfileAvatar({super.key, required this.name, this.size = 52});
+
+  final String name;
+  final double size;
+
+  /// The first letter of [name] in capitals; empty when there is none.
+  static String initialOf(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '';
+    return String.fromCharCode(trimmed.runes.first).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = initialOf(name);
+    return Container(
+      key: const ValueKey('profile-avatar'),
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(3),
+      // The gradient ring.
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [
+            AppColors.primary,
+            AppColors.accent,
+            Color(0xFFE23A7A),
+            AppColors.primaryLight,
+            AppColors.primary,
+          ],
+        ),
+      ),
+      child: Container(
+        // A thin white gap between the ring and the letter.
+        padding: const EdgeInsets.all(2),
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.surface,
+        ),
+        child: Container(
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primarySoft,
+          ),
+          child: initial.isEmpty
+              ? Icon(
+                  Icons.person_rounded,
+                  size: size * 0.48,
+                  color: AppColors.primary,
+                )
+              : Text(
+                  initial,
+                  key: const ValueKey('profile-initial'),
+                  style: TextStyle(
+                    fontSize: size * 0.4,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primary,
+                  ),
+                ),
+        ),
       ),
     );
   }

@@ -28,6 +28,11 @@ class HomeShell extends ConsumerWidget {
           label: 'Shop',
         ),
         NavigationDestination(
+          icon: Icon(Icons.grid_view_outlined),
+          selectedIcon: Icon(Icons.grid_view_rounded),
+          label: 'Categories',
+        ),
+        NavigationDestination(
           icon: Icon(Icons.receipt_long_outlined),
           selectedIcon: Icon(Icons.receipt_long_rounded),
           label: 'Orders',

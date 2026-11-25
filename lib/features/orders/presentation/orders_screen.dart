@@ -123,7 +123,7 @@ class OrderStatusChip extends StatelessWidget {
       Order(status: OrderStatus.cancelled) => ('Cancelled', AppColors.danger),
       Order(status: OrderStatus.delivered) => ('Delivered', AppColors.success),
       Order(awaitingPayment: true) => ('Payment pending', AppColors.warning),
-      _ => (order.status.label, AppColors.primary),
+      _ => (order.statusLabel, AppColors.primary),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

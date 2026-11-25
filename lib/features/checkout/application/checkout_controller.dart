@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../cart/application/cart_controller.dart';
+import '../../offers/slab_offers.dart';
 import '../../orders/domain/order.dart';
 import '../../rewards/application/rewards_providers.dart';
 import '../../store/application/store_providers.dart';
@@ -78,18 +79,44 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
     final serviceable = await ref
         .read(serviceAreaRepositoryProvider)
         .isServiceable(address.pincode);
-    if (!serviceable) {
+    final courier = cart.courier;
+    if (courier) {
+      if (serviceable) {
+        throw CheckoutFailure(
+          '${address.pincode} now has instant delivery. Enter your pincode '
+          'again to shop from the full store.',
+        );
+      }
+      if (method == PaymentMethod.cod) {
+        throw const CheckoutFailure('Outstation orders are paid online.');
+      }
+    } else if (!serviceable) {
       throw CheckoutFailure("We don't deliver to ${address.pincode} yet.");
     }
+
+    // With several stores, the one that delivers to this address serves
+    // the order, and its stock is what counts.
+    final storeId = courier
+        ? null
+        : await ref
+            .read(serviceAreaRepositoryProvider)
+            .storeIdFor(address.pincode);
 
     // Stock may have sold since the items went into the cart.
     final catalog = ref.read(catalogRepositoryProvider);
     for (final line in cart.lines) {
-      final fresh = await catalog.fetchProduct(line.product.id);
+      final fresh =
+          (await catalog.fetchProduct(line.product.id))?.forStore(storeId);
       final name = line.product.name;
       if (fresh == null || !fresh.inStock) {
         throw CheckoutFailure(
           '$name is out of stock. Remove it from your cart to continue.',
+        );
+      }
+      if (courier && !fresh.shipsAllIndia) {
+        throw CheckoutFailure(
+          '$name is no longer delivered outstation. Remove it from your cart '
+          'to continue.',
         );
       }
       final left = fresh.stockQty;
@@ -97,6 +124,37 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
         throw CheckoutFailure(
           'Only $left $name left in stock. Reduce the quantity in your '
           'cart to continue.',
+        );
+      }
+    }
+
+    // The offer product: the offer must still stand as it was picked,
+    // and there must be a unit left after the ordinary ones.
+    final offer = cart.offer;
+    if (offer != null) {
+      const changed = CheckoutFailure(
+        'The offer has changed. Remove the offer product from your cart '
+        'to continue.',
+      );
+      final current = (await ref.read(slabOfferRepositoryProvider).fetchActive())
+          .where((o) => o.id == offer.offerId)
+          .firstOrNull;
+      if (current == null ||
+          current.offerPricePaise != offer.pricePaise ||
+          !current.productIds.contains(offer.product.id) ||
+          !current.unlockedBy(cart.itemsSubtotalPaise)) {
+        throw changed;
+      }
+      final fresh =
+          (await catalog.fetchProduct(offer.product.id))?.forStore(storeId);
+      final left = fresh?.stockQty;
+      if (fresh == null ||
+          !fresh.inStock ||
+          (courier && !fresh.shipsAllIndia) ||
+          (left != null && cart.quantityOf(fresh.id) + 1 > left)) {
+        throw CheckoutFailure(
+          '${offer.product.name} is out of stock. Remove the offer product '
+          'from your cart to continue.',
         );
       }
     }
@@ -126,7 +184,10 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
       Order(
         id: '',
         userId: user.uid,
-        items: cart.lines.map(OrderItem.fromCart).toList(growable: false),
+        items: [
+          ...cart.lines.map(OrderItem.fromCart),
+          if (offer != null) OrderItem.fromOffer(offer),
+        ],
         subtotalPaise: cart.subtotalPaise,
         deliveryFeePaise: cart.deliveryFeePaise,
         handlingFeePaise: cart.handlingFeePaise,
@@ -140,11 +201,16 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
         paymentStatus: PaymentStatus.pending,
         status: OrderStatus.placed,
         createdAt: now,
-        etaAt: now.add(
-          Duration(
-            minutes: ref.read(storeSettingsProvider).deliveryEtaMinutes,
-          ),
-        ),
+        etaAt: courier
+            ? null
+            : now.add(
+                Duration(
+                  minutes: ref.read(storeSettingsProvider).deliveryEtaMinutes,
+                ),
+              ),
+        isCourier: courier,
+        storeId: storeId,
+        courierEta: courier ? ref.read(storeSettingsProvider).courierEta : null,
       ),
       recordCouponUse: discount > 0 && coupon!.oncePerCustomer,
     );

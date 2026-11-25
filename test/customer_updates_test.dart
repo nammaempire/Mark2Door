@@ -312,6 +312,54 @@ void main() {
       expect(Coupon.normalise('  save10 '), 'SAVE10');
     });
 
+    testWidgets(
+        'the coupon list shows usable coupons first with Apply, the rest '
+        'greyed out', (tester) async {
+      final container = await _pumpApp(tester);
+      // One banana is 42 rupees: SAVE10 works, WELCOME50 needs 199, OLD20
+      // has expired.
+      await _openCheckoutWithBanana(tester);
+      await _scrollTo(tester, _key('coupon-list-toggle'));
+      expect(find.text('1 coupon you can use'), findsOneWidget);
+      await tester.ensureVisible(_key('coupon-list-toggle'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('coupon-list-toggle'));
+      await tester.pumpAndSettle();
+
+      // Usable first; the ones that cannot be used follow, without Apply.
+      final codes = [
+        for (final e in find
+            .descendant(
+              of: _key('coupon-list'),
+              matching: find.byWidgetPredicate(
+                (w) => '${w.key}'.contains('coupon-card-'),
+              ),
+            )
+            .evaluate())
+          '${e.widget.key}',
+      ];
+      expect(codes.first, contains('SAVE10'));
+      expect(codes, hasLength(3));
+      expect(_key('coupon-apply-SAVE10'), findsOneWidget);
+      expect(_key('coupon-apply-WELCOME50'), findsNothing);
+      expect(_key('coupon-apply-OLD20'), findsNothing);
+      expect(find.text('This coupon has expired.'), findsOneWidget);
+      expect(
+        find.text('Add items worth ₹157 more to use this coupon.'),
+        findsOneWidget,
+      );
+
+      // Apply puts the code in the box and takes the discount off.
+      await tester.ensureVisible(_key('coupon-apply-SAVE10'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('coupon-apply-SAVE10'));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(_key('coupon-applied'), findsOneWidget);
+      expect(_key('coupon-list-toggle'), findsNothing);
+      expect(container.read(cartProvider).subtotalPaise, 4200);
+    });
+
     testWidgets('a wrong code is refused and a right one cuts the bill', (
       tester,
     ) async {

@@ -306,6 +306,52 @@ void main() {
   });
 
   group('saved addresses', () {
+    testWidgets('pincode can be changed under a saved address', (tester) async {
+      await _pumpApp(tester, prefs: _signedIn);
+      await tester.pumpAndSettle();
+      await _addBananaAndOpenCart(tester);
+      await tester.tap(find.byKey(const ValueKey('checkout-button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('name-field')), 'Navi');
+      await tester.enterText(
+        find.byKey(const ValueKey('line1-field')),
+        '12, 4th Cross, Koramangala',
+      );
+      await _placeCodOrder(tester);
+      await tester.tap(find.text('Continue shopping'));
+      await tester.pumpAndSettle();
+
+      await _addBananaAndOpenCart(tester);
+      await tester.tap(find.byKey(const ValueKey('checkout-button')));
+      await tester.pumpAndSettle();
+      // The saved address comes with a pincode box under it.
+      final box = find.byKey(const ValueKey('checkout-pincode-field'));
+      expect(find.byKey(const ValueKey('saved-address-card')), findsOneWidget);
+      expect(tester.widget<TextFormField>(box).controller!.text, '560034');
+      FilledButton pay() => tester.widget<FilledButton>(
+            find.byKey(const ValueKey('place-order-button')),
+          );
+
+      // A pincode we do not deliver to switches paying off.
+      await tester.enterText(box, '600001');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pincode-not-served')), findsOneWidget);
+      expect(pay().onPressed, isNull);
+
+      // Half-typed: still off.
+      await tester.enterText(box, '5600');
+      await tester.pumpAndSettle();
+      expect(pay().onPressed, isNull);
+
+      // Back to a served one: paying is on again.
+      await tester.enterText(box, '560034');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pincode-not-served')), findsNothing);
+      expect(pay().onPressed, isNotNull);
+    });
+
     testWidgets('second order reuses the address; a new one can be added', (
       tester,
     ) async {
@@ -343,7 +389,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('save-address-button')));
       await tester.pumpAndSettle();
-      expect(find.text('Enter your name'), findsOneWidget);
+      expect(find.text("Enter the receiver's name"), findsOneWidget);
       await tester.enterText(
         find.byKey(const ValueKey('new-name-field')),
         'Office',
@@ -701,6 +747,8 @@ void main() {
       // The wallet is used only once the shopper ticks the box.
       expect(find.text('₹25 available'), findsOneWidget);
       expect(find.text('- ₹25'), findsNothing);
+      await tester.ensureVisible(walletBox);
+      await tester.pumpAndSettle();
       await tester.tap(walletBox);
       await tester.pumpAndSettle();
       expect(find.text('₹25 will be used from ₹25'), findsOneWidget);

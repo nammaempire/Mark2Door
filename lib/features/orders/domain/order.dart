@@ -54,7 +54,11 @@ class OrderItem {
     required this.pricePaise,
     required this.quantity,
     this.mrpPaise = 0,
+    this.isOffer = false,
   });
+
+  /// Picked from a price slab offer, at the offer price.
+  final bool isOffer;
 
   final String productId;
   final String name;
@@ -82,6 +86,19 @@ class OrderItem {
         mrpPaise: item.product.mrpPaise,
       );
 
+  /// The product picked from a price slab offer: one unit at the offer
+  /// price. "(Offer)" is part of the name so the admin, the delivery
+  /// partner and the invoice all show it.
+  factory OrderItem.fromOffer(CartOffer offer) => OrderItem(
+        productId: offer.product.id,
+        name: '${offer.product.name} (Offer)',
+        unit: offer.product.unit,
+        pricePaise: offer.pricePaise,
+        quantity: 1,
+        mrpPaise: offer.mrpPaise,
+        isOffer: true,
+      );
+
   Map<String, dynamic> toMap() => {
         'productId': productId,
         'name': name,
@@ -89,6 +106,7 @@ class OrderItem {
         'pricePaise': pricePaise,
         'quantity': quantity,
         'mrpPaise': mrpPaise,
+        if (isOffer) 'offer': true,
       };
 
   factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem(
@@ -98,6 +116,7 @@ class OrderItem {
         pricePaise: (map['pricePaise'] as num?)?.toInt() ?? 0,
         quantity: (map['quantity'] as num?)?.toInt() ?? 0,
         mrpPaise: (map['mrpPaise'] as num?)?.toInt() ?? 0,
+        isOffer: map['offer'] == true,
       );
 }
 
@@ -126,6 +145,11 @@ class Order {
     this.riderPhone,
     this.riderRating,
     this.cancelledBy,
+    this.isCourier = false,
+    this.courierEta,
+    this.courierName,
+    this.trackingNumber,
+    this.storeId,
   });
 
   final String id;
@@ -169,8 +193,34 @@ class Order {
   /// "customer" when the shopper cancelled it themselves; null otherwise.
   final String? cancelledBy;
 
+  /// An Outstation order: packed by the store and sent by courier, with
+  /// no delivery partner. The same statuses are used with other meanings:
+  /// accepted = packed, pickedUp = shipped.
+  final bool isCourier;
+
+  /// Delivery time promised when the order was placed, e.g. "3 to 5 days".
+  final String? courierEta;
+
+  /// Filled in by the store when the parcel is handed to the courier.
+  final String? courierName;
+  final String? trackingNumber;
+
+  /// The store that serves this order, when the business has several;
+  /// null with one shop and for outstation orders.
+  final String? storeId;
+
+  /// Status in the shopper's words.
+  String get statusLabel {
+    if (!isCourier) return status.label;
+    return switch (status) {
+      OrderStatus.accepted => 'Packed',
+      OrderStatus.pickedUp => 'Shipped',
+      _ => status.label,
+    };
+  }
+
   /// The shopper can cancel until the delivery partner has picked the
-  /// order up from the store.
+  /// order up from the store (or, for courier orders, until it is shipped).
   bool get canCancel =>
       status == OrderStatus.placed || status == OrderStatus.accepted;
 
@@ -211,6 +261,10 @@ class Order {
       paymentMethod == PaymentMethod.online &&
       paymentStatus == PaymentStatus.pending;
 
+  /// Waiting for an online payment that the shopper can still make.
+  bool get canPayNow =>
+      awaitingPayment && status == OrderStatus.placed && payablePaise > 0;
+
   /// What to tell the customer about arrival at time [now]; null when an
   /// ETA does not apply (cancelled, or no estimate recorded).
   OrderEta? eta(DateTime now) {
@@ -224,6 +278,20 @@ class Order {
         detail: 'Delivery time is confirmed once payment goes through.',
         kind: EtaKind.onHold,
       );
+    }
+    if (isCourier) {
+      final days = courierEta ?? 'a few days';
+      return status == OrderStatus.pickedUp
+          ? OrderEta(
+              'Shipped',
+              detail: 'Reaches you in $days from the order date.',
+              kind: EtaKind.onTime,
+            )
+          : OrderEta(
+              'Arriving in $days',
+              detail: 'Delivered to your address.',
+              kind: EtaKind.onTime,
+            );
     }
     final at = etaAt;
     if (at == null) return null;
@@ -253,6 +321,8 @@ class Order {
     String? riderName,
     int? riderRating,
     String? cancelledBy,
+    String? courierName,
+    String? trackingNumber,
   }) =>
       Order(
         id: id ?? this.id,
@@ -277,6 +347,11 @@ class Order {
         riderPhone: riderPhone,
         riderRating: riderRating ?? this.riderRating,
         cancelledBy: cancelledBy ?? this.cancelledBy,
+        isCourier: isCourier,
+        courierEta: courierEta,
+        courierName: courierName ?? this.courierName,
+        trackingNumber: trackingNumber ?? this.trackingNumber,
+        storeId: storeId,
       );
 
   Map<String, dynamic> toMap() => {
@@ -297,6 +372,9 @@ class Order {
         'createdAt': createdAt.millisecondsSinceEpoch,
         'etaAt': etaAt?.millisecondsSinceEpoch,
         'paymentId': paymentId,
+        'deliveryType': isCourier ? 'courier' : 'instant',
+        if (storeId != null) 'storeId': storeId,
+        if (isCourier) 'courierEta': courierEta,
       };
 
   factory Order.fromMap(String id, Map<String, dynamic> map) => Order(
@@ -343,5 +421,10 @@ class Order {
         riderPhone: map['riderPhone'] as String?,
         riderRating: (map['riderRating'] as num?)?.toInt(),
         cancelledBy: map['cancelledBy'] as String?,
+        isCourier: map['deliveryType'] == 'courier',
+        courierEta: map['courierEta'] as String?,
+        courierName: map['courierName'] as String?,
+        trackingNumber: map['trackingNumber'] as String?,
+        storeId: map['storeId'] as String?,
       );
 }

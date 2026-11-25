@@ -27,6 +27,10 @@ class FakePushService implements PushService {
 class FirebasePushService implements PushService {
   FirebasePushService(this._messaging, this._db);
 
+  /// Every customer phone joins this topic; the admin web's "Notify
+  /// customers" page sends to it.
+  static const offersTopic = 'offers';
+
   final FirebaseMessaging _messaging;
   final FirebaseFirestore _db;
   StreamSubscription<String>? _refresh;
@@ -46,6 +50,12 @@ class FirebasePushService implements PushService {
     await _messaging.requestPermission();
     final token = await _messaging.getToken();
     if (token != null) await _save(uid, token);
+    // Offers the store sends to everyone go to this topic.
+    try {
+      await _messaging.subscribeToTopic(offersTopic);
+    } catch (_) {
+      // Order updates still work without it.
+    }
     // Google replaces tokens now and then; keep the saved one current.
     await _refresh?.cancel();
     _refresh = _messaging.onTokenRefresh.listen((t) => _save(uid, t));
@@ -55,6 +65,9 @@ class FirebasePushService implements PushService {
   Future<void> unregister(String uid) async {
     await _refresh?.cancel();
     _refresh = null;
+    try {
+      await _messaging.unsubscribeFromTopic(offersTopic);
+    } catch (_) {}
     if (uid.isEmpty) return;
     await _doc(uid).delete();
   }

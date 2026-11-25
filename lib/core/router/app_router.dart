@@ -7,6 +7,7 @@ import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/otp_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/cart/presentation/cart_screen.dart';
+import '../../features/catalog/presentation/categories_screen.dart';
 import '../../features/catalog/presentation/home_screen.dart';
 import '../../features/catalog/presentation/home_shell.dart';
 import '../../features/catalog/presentation/product_detail_screen.dart';
@@ -33,6 +34,7 @@ abstract final class Routes {
   static const otp = '/otp';
   static const pincode = '/pincode';
   static const home = '/home';
+  static const categories = '/categories';
   static const orders = '/orders';
   static const profile = '/profile';
   static const cart = '/home/cart';
@@ -154,6 +156,14 @@ final routerProvider = Provider<GoRouter>((ref) {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.categories,
+                builder: (context, state) => const CategoriesScreen(),
               ),
             ],
           ),

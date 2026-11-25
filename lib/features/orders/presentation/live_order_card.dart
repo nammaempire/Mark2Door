@@ -15,6 +15,17 @@ enum OrderStage {
   const OrderStage(this.label);
   final String label;
 
+  /// The step's name for [order]: courier orders are packed and shipped
+  /// where instant orders get a delivery partner.
+  String labelFor(Order order) {
+    if (!order.isCourier) return label;
+    return switch (this) {
+      OrderStage.assigned => 'Packed',
+      OrderStage.onTheWay => 'Shipped',
+      _ => label,
+    };
+  }
+
   static OrderStage of(Order order) {
     switch (order.status) {
       case OrderStatus.delivered:
@@ -49,6 +60,39 @@ class OrderStageView {
         'Waiting for payment',
         'Your order is confirmed as soon as the payment goes through.',
       );
+    }
+    if (order.isCourier) {
+      final days = order.courierEta ?? 'a few days';
+      final tracking = order.trackingNumber;
+      switch (OrderStage.of(order)) {
+        case OrderStage.placed:
+          return OrderStageView(
+            Icons.inventory_2_rounded,
+            'Order placed',
+            'The store is packing your order. It reaches you in $days.',
+          );
+        case OrderStage.assigned:
+          return const OrderStageView(
+            Icons.inventory_rounded,
+            'Packed',
+            'Your parcel is packed and ready to be shipped.',
+          );
+        case OrderStage.onTheWay:
+          return OrderStageView(
+            Icons.local_shipping_rounded,
+            'Shipped',
+            tracking == null || tracking.isEmpty
+                ? 'Your parcel is on its way.'
+                : '${order.courierName ?? 'Delivery'} tracking number '
+                    '$tracking.',
+          );
+        case OrderStage.delivered:
+          return const OrderStageView(
+            Icons.check_circle_rounded,
+            'Delivered',
+            'Your order has reached you. Enjoy!',
+          );
+      }
     }
     switch (OrderStage.of(order)) {
       case OrderStage.placed:
@@ -237,7 +281,12 @@ class _LiveOrderCardState extends State<LiveOrderCard>
                     ],
                   ),
                   const SizedBox(height: 14),
-                  _StageBar(animation: _loop, stage: stage, color: color),
+                  _StageBar(
+                    animation: _loop,
+                    order: order,
+                    stage: stage,
+                    color: color,
+                  ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -378,11 +427,13 @@ class _PulsingIcon extends StatelessWidget {
 class _StageBar extends StatelessWidget {
   const _StageBar({
     required this.animation,
+    required this.order,
     required this.stage,
     required this.color,
   });
 
   final Animation<double> animation;
+  final Order order;
   final OrderStage stage;
   final Color color;
 
@@ -425,7 +476,7 @@ class _StageBar extends StatelessWidget {
             for (final s in OrderStage.values)
               Expanded(
                 child: Text(
-                  s.label,
+                  s.labelFor(order),
                   textAlign: s.index == 0
                       ? TextAlign.start
                       : s.index == OrderStage.values.length - 1

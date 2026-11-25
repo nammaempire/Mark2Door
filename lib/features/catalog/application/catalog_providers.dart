@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
+import '../../service_area/application/pincode_controller.dart';
 import '../domain/product.dart';
 
 typedef ProductQuery = ({String? categoryId, String query});
@@ -11,9 +12,22 @@ final categoriesProvider = FutureProvider<List<Category>>(
 
 final productsProvider =
     FutureProvider.autoDispose.family<List<Product>, ProductQuery>(
-  (ref, q) => ref
-      .watch(catalogRepositoryProvider)
-      .fetchProducts(categoryId: q.categoryId, query: q.query),
+  (ref, q) async {
+    // The Outstation tab only offers what the store sends by courier.
+    final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
+    final found = await ref
+        .watch(catalogRepositoryProvider)
+        .fetchProducts(categoryId: q.categoryId, query: q.query);
+    if (outstation) {
+      return found.where((p) => p.shipsAllIndia).toList(growable: false);
+    }
+    // With several stores, show the stock of the store that serves the
+    // shopper's pincode.
+    final storeId = await ref.watch(storeIdProvider.future);
+    return storeId == null
+        ? found
+        : found.map((p) => p.forStore(storeId)).toList(growable: false);
+  },
 );
 
 /// The whole catalogue, unfiltered. Shared by the home sections and the
@@ -40,5 +54,10 @@ List<Product> similarProducts(
 }
 
 final productProvider = FutureProvider.autoDispose.family<Product?, String>(
-  (ref, id) => ref.watch(catalogRepositoryProvider).fetchProduct(id),
+  (ref, id) async {
+    final product =
+        await ref.watch(catalogRepositoryProvider).fetchProduct(id);
+    final storeId = await ref.watch(storeIdProvider.future);
+    return product?.forStore(storeId);
+  },
 );

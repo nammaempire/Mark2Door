@@ -21,6 +21,8 @@ class LocalStore {
   static const pincodeKey = 'pincode';
   static const customerNameKey = 'customer_name';
   static const cartKey = 'cart';
+  static const outstationCartKey = 'cart_outstation';
+  static const instantPincodeKey = 'instant_pincode';
   /// Single saved address from older versions; read once to migrate.
   static const addressKey = 'address';
   static const addressBookKey = 'address_book';

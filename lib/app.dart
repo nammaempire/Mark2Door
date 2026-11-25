@@ -17,8 +17,14 @@ class Mart2DoorApp extends ConsumerWidget {
       theme: AppTheme.light,
       routerConfig: ref.watch(routerProvider),
       // Covers every page while the phone has no internet.
-      builder: (context, child) =>
-          OfflineGate(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => MediaQuery.withClampedTextScaling(
+        // Follows the phone's font size setting, within limits the
+        // screens are built for: very large sizes would push text out of
+        // cards and buttons.
+        minScaleFactor: 0.9,
+        maxScaleFactor: 1.2,
+        child: OfflineGate(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,7 +13,11 @@ import '../../cart/presentation/bill_summary.dart';
 import '../application/order_providers.dart';
 import '../domain/order.dart';
 import 'eta_widgets.dart';
+import '../../store/application/store_providers.dart';
+import '../application/invoice.dart';
 import 'live_order_card.dart';
+import '../../reviews/review_widgets.dart';
+import 'pay_now.dart';
 import 'orders_screen.dart';
 
 class OrderDetailScreen extends ConsumerWidget {
@@ -86,6 +91,7 @@ class _Body extends StatelessWidget {
           ],
         ),
         EtaBanner(order: order),
+        PayNowBanner(order: order),
         if (order.isRefunded || order.refundInProgress)
           _RefundBanner(order: order),
         if (order.status == OrderStatus.cancelled &&
@@ -120,7 +126,16 @@ class _Body extends StatelessWidget {
                     item.name,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: Text('${item.unit}  ×  ${item.quantity}'),
+                  subtitle: order.status == OrderStatus.delivered
+                      // Bought and received: the item can be reviewed.
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${item.unit}  ×  ${item.quantity}'),
+                            ReviewItemButton(order: order, item: item),
+                          ],
+                        )
+                      : Text('${item.unit}  ×  ${item.quantity}'),
                   trailing: Text(
                     formatPaise(item.lineTotalPaise),
                     style: const TextStyle(
@@ -138,6 +153,7 @@ class _Body extends StatelessWidget {
           subtotalPaise: order.subtotalPaise,
           mrpTotalPaise: order.mrpTotalPaise,
           deliveryFeePaise: order.deliveryFeePaise,
+          courier: order.isCourier,
           handlingFeePaise: order.handlingFeePaise,
           rainFeePaise: order.rainFeePaise,
           walletAppliedPaise: order.walletAppliedPaise,
@@ -151,6 +167,41 @@ class _Body extends StatelessWidget {
         Card(
           child: Column(
             children: [
+              if (order.isCourier) ...[
+                ListTile(
+                  key: const ValueKey('courier-tile'),
+                  leading: const Icon(Icons.local_shipping_rounded,
+                      color: AppColors.primary),
+                  title: Text(
+                    order.courierName ?? 'Outstation delivery',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    (order.trackingNumber?.isNotEmpty ?? false)
+                        ? 'Tracking number ${order.trackingNumber}'
+                        : 'Reaches you in ${order.courierEta ?? 'a few days'}. '
+                            'The tracking number appears here once shipped.',
+                  ),
+                  trailing: (order.trackingNumber?.isNotEmpty ?? false)
+                      ? IconButton(
+                          key: const ValueKey('copy-tracking-button'),
+                          tooltip: 'Copy tracking number',
+                          icon: const Icon(Icons.copy_rounded),
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: order.trackingNumber!),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Tracking number copied'),
+                              ),
+                            );
+                          },
+                        )
+                      : null,
+                ),
+                const Divider(indent: 16, endIndent: 16),
+              ],
               if (order.riderName != null) ...[
                 ListTile(
                   leading: const Icon(Icons.delivery_dining_rounded,
@@ -195,6 +246,7 @@ class _Body extends StatelessWidget {
             ],
           ),
         ),
+        _InvoiceButton(order: order),
         if (order.canCancel) _CancelOrder(order: order),
       ],
     );
@@ -203,6 +255,64 @@ class _Body extends StatelessWidget {
 
 /// "Cancel order", offered until the delivery partner has picked the order
 /// up. Asks first, and says where any money already paid will go.
+/// "Download invoice": builds the bill as a PDF on the phone and hands it
+/// to the phone's share sheet, where it can be saved or sent. Offered once
+/// the order is real: not cancelled, and not still waiting for payment.
+class _InvoiceButton extends ConsumerStatefulWidget {
+  const _InvoiceButton({required this.order});
+
+  final Order order;
+
+  @override
+  ConsumerState<_InvoiceButton> createState() => _InvoiceButtonState();
+}
+
+class _InvoiceButtonState extends ConsumerState<_InvoiceButton> {
+  bool _busy = false;
+
+  Future<void> _download() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final order = widget.order;
+    try {
+      final bytes = await buildInvoicePdf(
+        order,
+        ref.read(storeSettingsProvider),
+      );
+      await ref.read(invoiceSharerProvider)(bytes, invoiceFileName(order));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Could not make the invoice. Try again.'),
+            ),
+          );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final order = widget.order;
+    if (order.status == OrderStatus.cancelled || order.awaitingPayment) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: OutlinedButton.icon(
+        key: const ValueKey('download-invoice-button'),
+        onPressed: _busy ? null : _download,
+        icon: const Icon(Icons.receipt_long_rounded),
+        label: Text(_busy ? 'Preparing invoice' : 'Download invoice'),
+      ),
+    );
+  }
+}
+
 class _CancelOrder extends ConsumerStatefulWidget {
   const _CancelOrder({required this.order});
 

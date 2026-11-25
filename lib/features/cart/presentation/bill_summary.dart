@@ -12,6 +12,7 @@ class OrderSummaryCard extends StatelessWidget {
     super.key,
     required this.subtotalPaise,
     required this.deliveryFeePaise,
+    this.courier = false,
     required this.totalPaise,
     this.mrpTotalPaise = 0,
     this.handlingFeePaise = 0,
@@ -29,6 +30,9 @@ class OrderSummaryCard extends StatelessWidget {
   /// What the items would cost at MRP; shown struck through when higher.
   final int mrpTotalPaise;
   final int deliveryFeePaise;
+
+  /// Outstation order: the delivery line is the courier charge.
+  final bool courier;
   final int handlingFeePaise;
   final int rainFeePaise;
 
@@ -62,7 +66,7 @@ class OrderSummaryCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _row(
-              'Delivery fee',
+              courier ? 'Delivery charge' : 'Delivery fee',
               deliveryFeePaise == 0 ? 'FREE' : formatPaise(deliveryFeePaise),
               valueColor: deliveryFeePaise == 0 ? AppColors.success : null,
             ),

@@ -65,10 +65,12 @@ class FirestoreContentRepository implements ContentRepository {
     final snap = await _db.collection('faqs').orderBy('sortOrder').get();
     return [
       for (final d in snap.docs)
-        Faq(
-          question: d.data()['question'] as String? ?? '',
-          answer: d.data()['answer'] as String? ?? '',
-        ),
+        // Questions written for the delivery app are not shown here.
+        if (d.data()['app'] != 'delivery')
+          Faq(
+            question: d.data()['question'] as String? ?? '',
+            answer: d.data()['answer'] as String? ?? '',
+          ),
     ];
   }
 

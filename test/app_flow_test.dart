@@ -95,6 +95,14 @@ void main() {
     );
     await tester.tap(find.text('Get OTP'));
     await tester.pumpAndSettle();
+    // No OTP until the terms and privacy policy are accepted.
+    expect(find.text('Enter OTP'), findsNothing);
+    expect(find.byKey(const ValueKey('agree-error')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('agree-checkbox')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('agree-error')), findsNothing);
+    await tester.tap(find.text('Get OTP'));
+    await tester.pumpAndSettle();
     expect(find.text('Enter OTP'), findsOneWidget);
 
     await tester.enterText(find.byKey(const ValueKey('otp-field')), '000000');
@@ -116,7 +124,8 @@ void main() {
     );
 
     // A pincode outside the delivery area is accepted: the shopper lands
-    // on home, is told we don't deliver there, and cannot add to the cart.
+    // on home with the Instant and Outstation tabs, and the Instant tab
+    // says sorry and offers the pincodes we do deliver to.
     await tester.enterText(
       find.byKey(const ValueKey('pincode-field')),
       '110001',
@@ -125,29 +134,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.text('Pincode 110001'), findsOneWidget);
+    expect(find.byKey(const ValueKey('shop-tabs')), findsOneWidget);
     expect(
-      find.text("Sorry, we don't deliver to 110001 yet"),
+      find.text('Sorry, we do not deliver instantly to 110001 yet'),
       findsOneWidget,
     );
-    final blockedAdd = find.byKey(const ValueKey('deal-p02'));
-    await tester.scrollUntilVisible(blockedAdd, 200, scrollable: _homeScroll);
-    await tester.ensureVisible(blockedAdd);
-    await tester.pumpAndSettle();
-    await tester.tap(blockedAdd);
-    await tester.pump();
-    expect(
-      find.text("Sorry, we don't deliver to your pincode yet."),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('service-pincode-dropdown')),
+        findsOneWidget);
     expect(find.byKey(const ValueKey('cart-bar')), findsNothing);
 
-    // Changing to a pincode we deliver to opens the store up.
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('change-pincode-button')),
-      -200,
-      scrollable: _homeScroll,
-    );
-    await tester.tap(find.byKey(const ValueKey('change-pincode-button')));
+    // Changing to a pincode we deliver to opens the full store, and the
+    // tabs go away.
+    await tester.tap(find.byKey(const ValueKey('header-pincode')));
     await tester.pumpAndSettle();
     // The name given earlier is already filled in.
     expect(find.text('Navi'), findsOneWidget);
@@ -159,7 +157,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.text('Pincode 560034'), findsOneWidget);
-    expect(find.byKey(const ValueKey('not-serviceable-banner')), findsNothing);
+    expect(find.byKey(const ValueKey('shop-tabs')), findsNothing);
 
     // The name shows on the account page.
     await tester.tap(find.text('Account'));
@@ -167,6 +165,11 @@ void main() {
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('profile-name'))).data,
       'Navi',
+    );
+    // The avatar is the first letter of the name.
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('profile-initial'))).data,
+      'N',
     );
   });
 
@@ -251,6 +254,62 @@ void main() {
 
     expect(find.byKey(const ValueKey('result-pending')), findsOneWidget);
     expect(find.text('Payment pending'), findsOneWidget);
+  });
+
+  testWidgets('the Categories tab lists every category and opens one', (
+    tester,
+  ) async {
+    await _pumpApp(tester, prefs: _signedIn);
+    await tester.tap(find.text('Categories'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('categories-grid')), findsOneWidget);
+    expect(find.byKey(const ValueKey('category-tile-fruits')), findsOneWidget);
+    expect(find.byKey(const ValueKey('category-tile-dairy')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('category-tile-fruits')));
+    await tester.pumpAndSettle();
+    expect(find.text('Fruits & Veg'), findsWidgets);
+    expect(find.byKey(const ValueKey('categories-grid')), findsNothing);
+  });
+
+  testWidgets('a pending order can be paid again, from the result page and '
+      'from the order', (tester) async {
+    await _pumpApp(tester, prefs: _signedIn);
+    await _addToCartAndOpenCheckout(tester);
+    await tester.tap(find.byKey(const ValueKey('place-order-button')));
+    await _showResultPage(tester);
+    await tester.tap(find.byKey(const ValueKey('simulate-pending')));
+    await _showResultPage(tester);
+
+    // First try from the pending page fails: the order stays payable.
+    expect(find.byKey(const ValueKey('pay-now-button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pay-now-button')));
+    await _showResultPage(tester);
+    await tester.tap(find.byKey(const ValueKey('simulate-failed')));
+    await _showResultPage(tester);
+    expect(find.byKey(const ValueKey('result-pending')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pay-now-button')), findsOneWidget);
+
+    // The order page says it is unpaid and offers the payment too.
+    await tester.tap(find.byKey(const ValueKey('track-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pay-now-banner')), findsOneWidget);
+    expect(find.text('Payment not completed'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pay-now-button')));
+    await _showResultPage(tester);
+    await tester.tap(find.byKey(const ValueKey('simulate-success')));
+    await _showResultPage(tester);
+    expect(find.byKey(const ValueKey('result-success')), findsOneWidget);
+
+    // Paid: nothing left to pay on the order.
+    await tester.tap(find.byKey(const ValueKey('track-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pay-now-banner')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Paid online'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Paid online'), findsOneWidget);
   });
 
   testWidgets('product detail: stepper updates the cart badge', (tester) async {
@@ -408,5 +467,7 @@ void main() {
     expect(prefs.getString(LocalStore.customerNameKey), isNull);
     expect(prefs.getString(LocalStore.pincodeKey), isNull);
     expect(prefs.getString(LocalStore.demoSessionKey), isNull);
+    // Lets any product list still loading in the background finish.
+    await tester.pump(const Duration(seconds: 1));
   });
 }

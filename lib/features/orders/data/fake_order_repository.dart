@@ -100,6 +100,18 @@ class FakeOrderRepository implements OrderRepository {
     _changes.add(null);
   }
 
+  /// Marks a courier order shipped, as the admin web does.
+  void ship(String orderId, {required String courier, required String tracking}) {
+    final order = _orders[orderId];
+    if (order == null) return;
+    _orders[orderId] = order.copyWith(
+      status: OrderStatus.pickedUp,
+      courierName: courier,
+      trackingNumber: tracking,
+    );
+    _changes.add(null);
+  }
+
   /// Marks an order delivered by [riderName], as the delivery app does.
   /// Sample data has no delivery app, so tests and demos call this.
   void deliver(String orderId, {required String riderName}) {

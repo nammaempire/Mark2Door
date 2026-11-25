@@ -8,6 +8,12 @@ abstract final class AppColors {
   static const Color primaryLight = Color(0xFF9F1D3F);
   static const Color primaryDark = Color(0xFF5A0A1C);
   static const Color primarySoft = Color(0xFFF9DFE5);
+  /// The Outstation (courier) side of the app has its own blue, so it is
+  /// never mistaken for the instant store.
+  static const Color outstation = Color(0xFF1F4E8C);
+  static const Color outstationLight = Color(0xFF2F6BB5);
+  static const Color outstationDark = Color(0xFF12305A);
+  static const Color outstationSoft = Color(0xFFE3ECF8);
   static const Color accent = Color(0xFFFF8A1F);
   static const Color accentSoft = Color(0xFFFFF1E0);
   static const Color accentDark = Color(0xFFB85A00);

@@ -46,6 +46,8 @@ class Product {
     this.description = '',
     bool inStock = true,
     this.stockQty,
+    this.shipsAllIndia = false,
+    this.storeStock = const {},
   }) : available = inStock;
 
   final String id;
@@ -74,6 +76,13 @@ class Product {
   /// Units the store has left. Null when the admin does not count stock
   /// for this product, which means there is no stock limit.
   final int? stockQty;
+
+  /// The admin's "Deliver all over India" switch: sent by courier to
+  /// pincodes outside the instant delivery area.
+  final bool shipsAllIndia;
+
+  /// Stock each store keeps for itself, by store id; see [forStore].
+  final Map<String, ({bool inStock, int? stockQty})> storeStock;
 
   /// Can be ordered: switched on by the admin and not counted down to zero.
   bool get inStock => available && (stockQty == null || stockQty! > 0);
@@ -107,7 +116,41 @@ class Product {
         description: map['description'] as String? ?? '',
         inStock: map['inStock'] as bool? ?? true,
         stockQty: (map['stockQty'] as num?)?.toInt(),
+        shipsAllIndia: map['allIndia'] as bool? ?? false,
+        storeStock: {
+          for (final e in (map['storeStock'] as Map? ?? const {}).entries)
+            if (e.value is Map)
+              e.key as String: (
+                inStock: (e.value as Map)['inStock'] as bool? ?? true,
+                stockQty: ((e.value as Map)['stockQty'] as num?)?.toInt(),
+              ),
+        },
       );
+
+  /// This product as the store [storeId] has it. A business with several
+  /// stores keeps stock per store, so the same product can be available
+  /// from one store and sold out at another. A store with no entry of its
+  /// own, and a business with one shop ([storeId] null), use the
+  /// product's own stock.
+  Product forStore(String? storeId) {
+    final own = storeStock[storeId];
+    if (own == null) return this;
+    return Product(
+      id: id,
+      name: name,
+      categoryId: categoryId,
+      unit: unit,
+      pricePaise: pricePaise,
+      mrpPaise: mrpPaise,
+      imageUrls: imageUrls,
+      emoji: emoji,
+      subtitle: subtitle,
+      description: description,
+      inStock: own.inStock,
+      stockQty: own.stockQty,
+      shipsAllIndia: shipsAllIndia,
+    );
+  }
 
   Map<String, dynamic> toMap() => {
         'name': name,
@@ -123,6 +166,7 @@ class Product {
         'description': description,
         'inStock': available,
         'stockQty': stockQty,
+        'allIndia': shipsAllIndia,
       };
 
   @override

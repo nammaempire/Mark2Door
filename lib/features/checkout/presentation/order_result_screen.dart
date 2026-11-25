@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../orders/application/order_providers.dart';
 import '../../orders/presentation/live_order_card.dart';
+import '../../orders/presentation/pay_now.dart';
 import 'result_animation.dart';
 
 /// One screen, four states: order placed, payment failed, payment pending
@@ -118,7 +119,18 @@ class OrderResultScreen extends ConsumerWidget {
                     onPressed: () => context.go(Routes.cart),
                     child: const Text('Try again'),
                   )
-                else
+                else if (outcome == ResultKind.pending &&
+                    order != null &&
+                    order.canPayNow) ...[
+                  // Still unpaid: offer the payment again right here.
+                  PayNowButton(order: order),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    key: const ValueKey('track-button'),
+                    onPressed: () => context.go(Routes.order(orderId)),
+                    child: const Text('View order'),
+                  ),
+                ] else
                   FilledButton(
                     key: const ValueKey('track-button'),
                     onPressed: () => context.go(Routes.order(orderId)),
