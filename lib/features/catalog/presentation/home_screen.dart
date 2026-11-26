@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../../core/widgets/stored_image.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,7 @@ import '../../service_area/presentation/shop_tabs.dart';
 import '../../store/application/store_providers.dart';
 import '../application/catalog_providers.dart';
 import '../domain/product.dart';
+import '../../requests/request_product_card.dart';
 import 'product_widgets.dart';
 import 'promo_carousel.dart';
 
@@ -183,15 +186,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         SliverToBoxAdapter(child: _PerksStrip()),
                       ],
                       ...products.when(
+                        skipLoadingOnReload: true,
                         data: (items) => [
                           if (items.isEmpty)
-                            const SliverFillRemaining(
-                              hasScrollBody: false,
-                              child: EmptyState(
-                                icon: Icons.search_off_rounded,
-                                title: 'No products found',
-                                message: 'Try a different name, category '
-                                    'or tab.',
+                            SliverToBoxAdapter(
+                              child: Column(
+                                children: [
+                                  const EmptyState(
+                                    icon: Icons.search_off_rounded,
+                                    title: 'No products found',
+                                    message: 'Try a different name, '
+                                        'category or tab.',
+                                  ),
+                                  // Ask the store for what was searched.
+                                  RequestProductCard(suggestedName: _query),
+                                ],
                               ),
                             )
                           else ...[
@@ -261,6 +270,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ),
                             ],
                             ProductGrid(products: items),
+                            // Results, but maybe not the one they wanted.
+                            if (searching)
+                              SliverToBoxAdapter(
+                                child: RequestProductCard(
+                                  suggestedName: _query,
+                                ),
+                              ),
                           ],
                         ],
                         loading: () => [
@@ -770,6 +786,7 @@ class _CategoryStrip extends ConsumerWidget {
     return SizedBox(
       height: 124 + (scale > 1 ? 36 * (scale - 1) : 0),
       child: categories.when(
+        skipLoadingOnReload: true,
         loading: () => const CategoryStripSkeleton(),
         error: (_, __) => const SizedBox.shrink(),
         data: (items) => ListView.separated(
@@ -824,17 +841,14 @@ class CategoryTile extends StatelessWidget {
               // keeps its drawn icon.
               child: category.imageUrl.isEmpty
                   ? EmojiText(style.emoji, size: 34)
-                  : Image.network(
+                  : StoredImage(
                       category.imageUrl,
                       key: ValueKey('category-image-${category.id}'),
                       width: 72,
                       height: 72,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          EmojiText(style.emoji, size: 34),
-                      loadingBuilder: (_, child, progress) => progress == null
-                          ? child
-                          : EmojiText(style.emoji, size: 34),
+                      decodeWidth: 96,
+                      placeholder: EmojiText(style.emoji, size: 34),
+                      fallback: EmojiText(style.emoji, size: 34),
                     ),
             ),
             const SizedBox(height: 6),

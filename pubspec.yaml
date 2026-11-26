@@ -24,6 +24,7 @@ dependencies:
   # Order invoice: built as a PDF on the phone, then saved or shared.
   pdf: '>=3.10.0 <4.0.0'
   printing: '>=5.11.0 <6.0.0'
+  cached_network_image: '>=3.4.0 <5.0.0'
 
 dev_dependencies:
   flutter_test:

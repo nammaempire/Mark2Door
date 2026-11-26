@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/widgets/stored_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -137,12 +139,12 @@ class ProductImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final placeholder = ProductArt(product: product, artSize: artSize);
     if (product.imageUrl.isEmpty) return placeholder;
-    return Image.network(
+    // Kept on the phone after the first download, and decoded at
+    // thumbnail size.
+    return StoredImage(
       product.imageUrl,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => placeholder,
-      loadingBuilder: (_, child, progress) =>
-          progress == null ? child : placeholder,
+      placeholder: placeholder,
+      fallback: placeholder,
     );
   }
 }

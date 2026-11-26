@@ -24,6 +24,8 @@ class AsyncValueView<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return value.when(
+      // Fresh data replaces what is on screen without a loading flash.
+      skipLoadingOnReload: true,
       data: data,
       loading: () => loading,
       error: (error, _) => EmptyState(

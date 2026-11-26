@@ -8,6 +8,7 @@ import 'package:mart2door/core/storage/local_store.dart';
 import 'package:mart2door/features/cart/application/cart_controller.dart';
 import 'package:mart2door/features/cart/domain/cart.dart';
 import 'package:mart2door/features/catalog/data/fake_catalog_repository.dart';
+import 'package:mart2door/features/catalog/domain/product.dart';
 import 'package:mart2door/features/checkout/presentation/order_result_screen.dart';
 import 'package:mart2door/features/offers/slab_offers.dart';
 import 'package:mart2door/features/orders/domain/order.dart';
@@ -75,6 +76,32 @@ void main() {
     final again = Cart.fromMap(cart.toMap());
     expect(again.offer!.pricePaise, 900);
     expect(again.offer!.product.id, banana.id);
+  });
+
+  test('the main In stock switch turns a product off at every store', () {
+    // The store's own switch is on and it has 5 units.
+    final map = {
+      ...banana.toMap(),
+      'storeStock': {
+        'store-a': {'inStock': true, 'stockQty': 5},
+      },
+    };
+    final on = Product.fromMap(banana.id, {...map, 'inStock': true});
+    expect(on.forStore('store-a').inStock, isTrue);
+    expect(on.forStore('store-a').stockQty, 5);
+    // Switched off for all stores by the admin.
+    final off = Product.fromMap(banana.id, {...map, 'inStock': false});
+    expect(off.forStore('store-a').inStock, isFalse);
+    // A store's own switch still turns it off for that store alone.
+    final storeOff = Product.fromMap(banana.id, {
+      ...map,
+      'inStock': true,
+      'storeStock': {
+        'store-a': {'inStock': false, 'stockQty': 5},
+      },
+    });
+    expect(storeOff.forStore('store-a').inStock, isFalse);
+    expect(storeOff.forStore('store-b').inStock, isTrue);
   });
 
   testWidgets('cart shows how much to add, then the list; one pick at the '

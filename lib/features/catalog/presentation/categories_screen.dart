@@ -16,6 +16,7 @@ class CategoriesScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Categories')),
       body: categories.when(
+        skipLoadingOnReload: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => EmptyState(
           icon: Icons.wifi_off_rounded,

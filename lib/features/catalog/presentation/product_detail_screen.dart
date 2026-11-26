@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/widgets/stored_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -383,16 +385,14 @@ class _ProductImageCarouselState extends State<ProductImageCarousel> {
           controller: _controller,
           itemCount: images.length,
           onPageChanged: (i) => setState(() => _page = i),
-          itemBuilder: (context, i) => Image.network(
+          itemBuilder: (context, i) => StoredImage(
             images[i],
-            fit: BoxFit.cover,
+            // Full width of the phone, so decoded larger than a thumbnail.
+            decodeWidth: 480,
             semanticLabel: '${product.name}, photo ${i + 1}',
             // A broken link falls back to the product's artwork.
-            errorBuilder: (_, __, ___) =>
-                ProductArt(product: product, artSize: 132),
-            loadingBuilder: (_, child, progress) => progress == null
-                ? child
-                : const Shimmer(child: SkeletonBox(radius: 0)),
+            fallback: ProductArt(product: product, artSize: 132),
+            placeholder: const Shimmer(child: SkeletonBox(radius: 0)),
           ),
         ),
         Positioned(

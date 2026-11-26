@@ -6,15 +6,25 @@ import '../domain/product.dart';
 
 typedef ProductQuery = ({String? categoryId, String query});
 
-final categoriesProvider = FutureProvider<List<Category>>(
-  (ref) => ref.watch(catalogRepositoryProvider).fetchCategories(),
-);
+/// Counts the store's changes to the catalogue. The lists below watch
+/// it, so a new price, stock level or product shows without the shopper
+/// doing anything.
+final catalogVersionProvider = StreamProvider<int>((ref) {
+  var version = 0;
+  return ref.watch(catalogRepositoryProvider).changes.map((_) => ++version);
+});
+
+final categoriesProvider = FutureProvider<List<Category>>((ref) {
+  ref.watch(catalogVersionProvider);
+  return ref.watch(catalogRepositoryProvider).fetchCategories();
+});
 
 final productsProvider =
     FutureProvider.autoDispose.family<List<Product>, ProductQuery>(
   (ref, q) async {
     // The Outstation tab only offers what the store sends by courier.
     final outstation = ref.watch(shopModeProvider) == ShopMode.outstation;
+    ref.watch(catalogVersionProvider);
     final found = await ref
         .watch(catalogRepositoryProvider)
         .fetchProducts(categoryId: q.categoryId, query: q.query);
@@ -55,8 +65,13 @@ List<Product> similarProducts(
 
 final productProvider = FutureProvider.autoDispose.family<Product?, String>(
   (ref, id) async {
+    ref.watch(catalogVersionProvider);
+    final repo = ref.watch(catalogRepositoryProvider);
+    // From the catalogue already on the phone; read from the server only
+    // for a product that is not in it.
     final product =
-        await ref.watch(catalogRepositoryProvider).fetchProduct(id);
+        (await repo.fetchProducts()).where((p) => p.id == id).firstOrNull ??
+            await repo.fetchProduct(id);
     final storeId = await ref.watch(storeIdProvider.future);
     return product?.forStore(storeId);
   },

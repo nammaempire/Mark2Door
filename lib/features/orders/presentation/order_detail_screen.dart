@@ -94,6 +94,16 @@ class _Body extends StatelessWidget {
         PayNowBanner(order: order),
         if (order.isRefunded || order.refundInProgress)
           _RefundBanner(order: order),
+        if (order.status == OrderStatus.cancelled && order.cancelledForPrice)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: Text(
+              'This order was cancelled because prices changed while you '
+              'were ordering. Please place the order again.',
+              key: ValueKey('cancelled-for-price'),
+              style: TextStyle(color: AppColors.textMuted),
+            ),
+          ),
         if (order.status == OrderStatus.cancelled &&
             order.cancelledBy == 'customer')
           const Padding(

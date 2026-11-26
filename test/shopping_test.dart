@@ -5,6 +5,9 @@ import 'package:mart2door/app.dart';
 import 'package:mart2door/core/config/store_settings.dart';
 import 'package:mart2door/core/providers.dart';
 import 'package:mart2door/core/storage/local_store.dart';
+import 'package:mart2door/features/catalog/data/fake_catalog_repository.dart';
+import 'package:mart2door/features/cart/application/cart_controller.dart';
+import 'package:mart2door/core/router/app_router.dart';
 import 'package:mart2door/core/theme/app_theme.dart';
 import 'package:mart2door/core/widgets/shimmer.dart';
 import 'package:mart2door/features/auth/application/auth_providers.dart';
@@ -306,6 +309,47 @@ void main() {
   });
 
   group('saved addresses', () {
+    testWidgets('a price the store changed updates the cart before ordering',
+        (tester) async {
+      await _pumpApp(tester, prefs: _signedIn);
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(Mart2DoorApp)),
+      );
+      // The cart holds a banana at an old, lower price.
+      final banana = FakeCatalogRepository.products[0];
+      final old = Product.fromMap(
+        banana.id,
+        {...banana.toMap(), 'pricePaise': banana.pricePaise - 1000},
+      );
+      container.read(cartProvider.notifier).setQuantity(old, 2);
+      container.read(routerProvider).push(Routes.checkout);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('name-field')), 'Navi');
+      await tester.enterText(
+        find.byKey(const ValueKey('line1-field')),
+        '12, 4th Cross, Koramangala',
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('method-cod')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('method-cod')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('place-order-button')));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      // No order: the shopper is told and the cart has today's price.
+      expect(find.byType(OrderResultScreen), findsNothing);
+      expect(
+        find.textContaining('The price of ${banana.name} has changed'),
+        findsOneWidget,
+      );
+      final line = container.read(cartProvider).lines.single;
+      expect(line.product.pricePaise, banana.pricePaise);
+      expect(line.quantity, 2);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
     testWidgets('pincode can be changed under a saved address', (tester) async {
       await _pumpApp(tester, prefs: _signedIn);
       await tester.pumpAndSettle();

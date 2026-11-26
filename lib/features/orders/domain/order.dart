@@ -145,6 +145,7 @@ class Order {
     this.riderPhone,
     this.riderRating,
     this.cancelledBy,
+    this.cancelReason,
     this.isCourier = false,
     this.courierEta,
     this.courierName,
@@ -192,6 +193,11 @@ class Order {
 
   /// "customer" when the shopper cancelled it themselves; null otherwise.
   final String? cancelledBy;
+
+  /// Set by the server: `price_check` when the order's total was below
+  /// the store's prices.
+  final String? cancelReason;
+  bool get cancelledForPrice => cancelReason == 'price_check';
 
   /// An Outstation order: packed by the store and sent by courier, with
   /// no delivery partner. The same statuses are used with other meanings:
@@ -347,6 +353,7 @@ class Order {
         riderPhone: riderPhone,
         riderRating: riderRating ?? this.riderRating,
         cancelledBy: cancelledBy ?? this.cancelledBy,
+        cancelReason: cancelReason,
         isCourier: isCourier,
         courierEta: courierEta,
         courierName: courierName ?? this.courierName,
@@ -421,6 +428,7 @@ class Order {
         riderPhone: map['riderPhone'] as String?,
         riderRating: (map['riderRating'] as num?)?.toInt(),
         cancelledBy: map['cancelledBy'] as String?,
+        cancelReason: map['cancelReason'] as String?,
         isCourier: map['deliveryType'] == 'courier',
         courierEta: map['courierEta'] as String?,
         courierName: map['courierName'] as String?,

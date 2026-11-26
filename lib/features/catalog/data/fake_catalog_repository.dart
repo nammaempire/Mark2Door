@@ -38,6 +38,9 @@ class FakeCatalogRepository implements CatalogRepository {
   ];
 
   @override
+  Stream<void> get changes => const Stream.empty();
+
+  @override
   Future<List<Category>> fetchCategories() async {
     await Future<void>.delayed(_latency);
     return categories;

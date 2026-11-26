@@ -132,6 +132,10 @@ class Product {
   /// from one store and sold out at another. A store with no entry of its
   /// own, and a business with one shop ([storeId] null), use the
   /// product's own stock.
+  ///
+  /// The product's own "In stock" switch is the master: switched off, the
+  /// product is unavailable at every store, whatever a store's own switch
+  /// says.
   Product forStore(String? storeId) {
     final own = storeStock[storeId];
     if (own == null) return this;
@@ -146,7 +150,7 @@ class Product {
       emoji: emoji,
       subtitle: subtitle,
       description: description,
-      inStock: own.inStock,
+      inStock: inStock && own.inStock,
       stockQty: own.stockQty,
       shipsAllIndia: shipsAllIndia,
     );

@@ -5,6 +5,7 @@ import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/shimmer.dart';
 import '../application/catalog_providers.dart';
 import '../../service_area/presentation/delivery_banner.dart';
+import '../../requests/request_product_card.dart';
 import 'product_widgets.dart';
 
 class ProductListScreen extends ConsumerWidget {
@@ -39,10 +40,18 @@ class ProductListScreen extends ConsumerWidget {
               ),
               onRetry: () => ref.invalidate(productsProvider(query)),
               data: (items) => items.isEmpty
-                  ? const EmptyState(
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Nothing here yet',
-                      message: 'Products in this category will appear here.',
+                  ? const SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          EmptyState(
+                            icon: Icons.inventory_2_outlined,
+                            title: 'Nothing here yet',
+                            message:
+                                'Products in this category will appear here.',
+                          ),
+                          RequestProductCard(),
+                        ],
+                      ),
                     )
                   : CustomScrollView(
                       slivers: [
@@ -53,6 +62,8 @@ class ProductListScreen extends ConsumerWidget {
                         ),
                         const SliverToBoxAdapter(child: SizedBox(height: 12)),
                         ProductGrid(products: items),
+                        // Not here? The shopper can ask the store for it.
+                        const SliverToBoxAdapter(child: RequestProductCard()),
                       ],
                     ),
             ),

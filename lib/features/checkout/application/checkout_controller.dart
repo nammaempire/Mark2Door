@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../cart/application/cart_controller.dart';
+import '../../catalog/domain/product.dart';
 import '../../offers/slab_offers.dart';
 import '../../orders/domain/order.dart';
 import '../../rewards/application/rewards_providers.dart';
@@ -104,6 +105,8 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
 
     // Stock may have sold since the items went into the cart.
     final catalog = ref.read(catalogRepositoryProvider);
+    // Products whose price the store changed since they went in the cart.
+    final repriced = <Product, int>{};
     for (final line in cart.lines) {
       final fresh =
           (await catalog.fetchProduct(line.product.id))?.forStore(storeId);
@@ -126,6 +129,22 @@ class CheckoutController extends AutoDisposeAsyncNotifier<void> {
           'cart to continue.',
         );
       }
+      if (fresh.pricePaise != line.product.pricePaise) {
+        repriced[fresh] = line.quantity;
+      }
+    }
+
+    // The server refuses an order priced below the store's prices, so
+    // the cart takes the new prices and the shopper sees the new total
+    // before ordering.
+    if (repriced.isNotEmpty) {
+      final cartNow = ref.read(cartProvider.notifier);
+      repriced.forEach(cartNow.setQuantity);
+      final names = repriced.keys.map((p) => p.name).join(', ');
+      throw CheckoutFailure(
+        'The price of $names has changed. Your cart now shows the new '
+        'price. Check the total and order again.',
+      );
     }
 
     // The offer product: the offer must still stand as it was picked,
